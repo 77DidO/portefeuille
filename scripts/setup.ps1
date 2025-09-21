@@ -31,11 +31,12 @@ function Resolve-RepoPath {
     )
 
     $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-    $rootPath = (Resolve-Path (Join-Path $scriptDir '..')).Path
+    $rootPath = Convert-Path (Join-Path $scriptDir '..')
+
     if ([string]::IsNullOrWhiteSpace($RelativePath)) {
         return $rootPath
     }
-    return (Resolve-Path (Join-Path $rootPath $RelativePath)).Path
+    return Convert-Path (Join-Path $rootPath $RelativePath)
 }
 
 $RootDir = Resolve-RepoPath
