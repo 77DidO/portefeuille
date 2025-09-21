@@ -115,6 +115,7 @@ switch ($Command) {
             } else {
                 $previousStrictMode = $null
             }
+
             try {
                 Set-StrictMode -Off
                 npm install
@@ -123,6 +124,7 @@ switch ($Command) {
                     Set-StrictMode -Version $previousStrictMode
                 } else {
                     Set-StrictMode -Version Latest
+
                 }
                 Pop-Location
             }
