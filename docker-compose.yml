@@ -1,0 +1,38 @@
+version: "3.9"
+services:
+  backend:
+    build:
+      context: ./
+      dockerfile: backend/Dockerfile
+    container_name: portfolio-backend
+    environment:
+      - DATABASE_URL=sqlite:////data/portfolio.db
+      - TZ=Europe/Paris
+      - APP_SECRET=${APP_SECRET:-change_me}
+      - JWT_SECRET=${JWT_SECRET:-change_me_jwt}
+      - BINANCE_API_KEY=${BINANCE_API_KEY:-}
+      - BINANCE_API_SECRET=${BINANCE_API_SECRET:-}
+    volumes:
+      - db_data:/data
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./
+      dockerfile: frontend/Dockerfile
+    container_name: portfolio-frontend
+    depends_on:
+      - backend
+    environment:
+      - NEXT_PUBLIC_API_BASE=http://localhost:8000
+    ports:
+      - "3000:3000"
+
+volumes:
+  db_data:
