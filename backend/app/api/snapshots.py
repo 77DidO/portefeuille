@@ -19,7 +19,6 @@ def list_snapshots(
     from_ts: Optional[datetime] = Query(default=None, alias="from"),
     to_ts: Optional[datetime] = Query(default=None, alias="to"),
     db: Session = Depends(deps.get_db),
-    _: dict = Depends(deps.get_current_user),
 ) -> SnapshotRangeResponse:
     query = db.query(Snapshot)
     if from_ts:
@@ -31,6 +30,6 @@ def list_snapshots(
 
 
 @router.post("/run")
-def run_snapshot_now(db: Session = Depends(deps.get_db), _: dict = Depends(deps.get_current_user)) -> dict:
+def run_snapshot_now(db: Session = Depends(deps.get_db)) -> dict:
     snapshot = run_snapshot(db)
     return {"snapshot_id": snapshot.id}

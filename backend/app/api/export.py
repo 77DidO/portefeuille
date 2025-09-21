@@ -10,6 +10,6 @@ router = APIRouter(prefix="/export", tags=["export"])
 
 
 @router.get("/zip")
-def export_zip_route(db: Session = Depends(deps.get_db), _: dict = Depends(deps.get_current_user)):
+def export_zip_route(db: Session = Depends(deps.get_db)):
     content = export_zip(db)
     return Response(content=content, media_type="application/zip", headers={"Content-Disposition": "attachment; filename=portfolio_export.zip"})

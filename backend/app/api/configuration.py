@@ -48,7 +48,7 @@ def _deserialize_setting_value(key: str, value: str | None) -> Any:
 
 
 @router.get("/settings", response_model=list[SettingResponse])
-def list_settings(db: Session = Depends(deps.get_db), _: dict = Depends(deps.get_current_user)):
+def list_settings(db: Session = Depends(deps.get_db)):
     settings = db.query(Setting).order_by(Setting.key).all()
     return [
         SettingResponse(
@@ -61,7 +61,7 @@ def list_settings(db: Session = Depends(deps.get_db), _: dict = Depends(deps.get
 
 
 @router.post("/settings", response_model=list[SettingResponse])
-def save_settings(payload: SettingsPayload, db: Session = Depends(deps.get_db), _: dict = Depends(deps.get_current_user)):
+def save_settings(payload: SettingsPayload, db: Session = Depends(deps.get_db)):
     alias_updated = False
     for key, value in payload.data.items():
         setting = db.get(Setting, key)
@@ -88,7 +88,7 @@ def save_settings(payload: SettingsPayload, db: Session = Depends(deps.get_db), 
 
 
 @router.post("/api/binance")
-def save_binance_api(credentials: dict, db: Session = Depends(deps.get_db), _: dict = Depends(deps.get_current_user)):
+def save_binance_api(credentials: dict, db: Session = Depends(deps.get_db)):
     key = credentials.get("key", "")
     secret = credentials.get("secret", "")
     db.merge(Setting(key="binance_api_key", value=encrypt(key) if key else None, updated_at=utc_now()))
@@ -98,7 +98,7 @@ def save_binance_api(credentials: dict, db: Session = Depends(deps.get_db), _: d
 
 
 @router.post("/wipe")
-def wipe_data(db: Session = Depends(deps.get_db), _: dict = Depends(deps.get_current_user)) -> dict:
+def wipe_data(db: Session = Depends(deps.get_db)) -> dict:
     for model in (Transaction, Snapshot, Holding, JournalTrade, Price, FxRate, AccountSetting, SystemLog):
         db.query(model).delete(synchronize_session=False)
     compute_holdings.cache_clear()

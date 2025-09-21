@@ -6,7 +6,6 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAx
 
 import { AppShell } from "@/components/AppShell";
 import { api } from "@/lib/api";
-import { useRequireAuth } from "@/lib/auth";
 import { formatCurrency, formatDateTime } from "@/lib/format";
 import { formatErrorDetail } from "@/lib/errors";
 
@@ -53,7 +52,6 @@ type SnapshotPoint = {
 };
 
 export default function DashboardPage() {
-  const { token, expiresAt } = useRequireAuth();
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [snapshots, setSnapshots] = useState<SnapshotPoint[]>([]);
@@ -83,7 +81,7 @@ export default function DashboardPage() {
       }
     }
     load();
-  }, [token, expiresAt]);
+  }, []);
 
   const donutData = useMemo(() => {
     const groups: Record<string, number> = {

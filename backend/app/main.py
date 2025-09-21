@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from app.api import auth, configuration, export, health, journal, portfolio, snapshots, transactions
+from app.api import configuration, export, health, journal, portfolio, snapshots, transactions
 from app.core.config import settings
 from app.db import base  # noqa: F401
 from app.db.migration import run_migrations
@@ -93,7 +93,6 @@ def seed_demo() -> None:
 
 
 app.include_router(health.router)
-app.include_router(auth.router)
 app.include_router(portfolio.router)
 app.include_router(transactions.router)
 app.include_router(snapshots.router)
