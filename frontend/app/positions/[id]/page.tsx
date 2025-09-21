@@ -19,6 +19,12 @@ interface HistoryPoint {
   market_value_eur: number;
   pl_eur: number;
   pl_pct: number;
+  id?: string;
+}
+
+interface HistoryPointWithMeta extends HistoryPoint {
+  id: string;
+  dateLabel: string;
 }
 
 interface HoldingDetail {
@@ -82,12 +88,13 @@ export default function PositionDetailPage() {
     };
   }, [decodedId, token, expiresAt]);
 
-  const historyData = useMemo(() => {
+  const historyData = useMemo<HistoryPointWithMeta[]>(() => {
     if (!detail?.history?.length) {
       return [];
     }
-    return detail.history.map((point) => ({
+    return detail.history.map((point, index) => ({
       ...point,
+      id: point.id ?? `${point.ts}-${index}`,
       dateLabel: formatDate(point.ts),
     }));
   }, [detail]);
@@ -183,7 +190,7 @@ export default function PositionDetailPage() {
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {historyData.map((point) => (
-                          <tr key={point.ts}>
+                          <tr key={point.id}>
                             <td className="px-4 py-2 text-slate-700">{formatDate(point.ts)}</td>
                             <td className="px-4 py-2 text-slate-700">{formatCurrency(point.market_price_eur)}</td>
                             <td className="px-4 py-2 text-slate-700">{formatCurrency(point.market_value_eur)}</td>
