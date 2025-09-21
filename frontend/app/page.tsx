@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
 
+import { AppShell } from "@/components/AppShell";
 import { api } from "@/lib/api";
+import { useRequireAuth } from "@/lib/auth";
+import { formatCurrency } from "@/lib/format";
 import { formatErrorDetail } from "@/lib/errors";
-import { isTokenValid, useAuthStore } from "@/lib/store";
 
 const COLORS = ["#1d4ed8", "#22c55e", "#f97316", "#6366f1"];
 
@@ -38,8 +38,7 @@ type SnapshotPoint = {
 };
 
 export default function DashboardPage() {
-  const router = useRouter();
-  const { token, expiresAt, logout } = useAuthStore();
+  const { token, expiresAt } = useRequireAuth();
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [snapshots, setSnapshots] = useState<SnapshotPoint[]>([]);
@@ -47,11 +46,6 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isTokenValid(token, expiresAt)) {
-      logout();
-      router.push("/login");
-      return;
-    }
     async function load() {
       try {
         setLoading(true);
@@ -69,7 +63,7 @@ export default function DashboardPage() {
       }
     }
     load();
-  }, [token, expiresAt, logout, router]);
+  }, [token, expiresAt]);
 
   const donutData = useMemo(() => {
     const groups: Record<string, number> = {
@@ -97,24 +91,8 @@ export default function DashboardPage() {
   }, [holdings]);
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div>
-            <h1 className="text-xl font-semibold text-slate-800">Portefeuille — PEA & Crypto</h1>
-            <p className="text-sm text-slate-500">Mono-utilisateur — données stockées en local</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <Link className="text-sm text-indigo-600 hover:underline" href="/settings">
-              Configuration
-            </Link>
-            <button className="text-sm text-slate-500 hover:text-red-500" onClick={logout}>
-              Déconnexion
-            </button>
-          </div>
-        </div>
-      </header>
-      <main className="mx-auto max-w-6xl space-y-8 px-6 py-8">
+    <AppShell>
+      <div className="space-y-8">
         {loading ? <p>Chargement…</p> : null}
         {error ? <p className="text-red-600">{error}</p> : null}
         {summary ? (
@@ -218,8 +196,8 @@ export default function DashboardPage() {
             </table>
           </div>
         </section>
-      </main>
-    </div>
+      </div>
+    </AppShell>
   );
 }
 
@@ -233,14 +211,11 @@ function Card({ title, value, subtitle }: { title: string; value: string; subtit
   );
 }
 
-function Th({ children }: { children: React.ReactNode }) {
+function Th({ children }: { children: ReactNode }) {
   return <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">{children}</th>;
 }
 
-function Td({ children }: { children: React.ReactNode }) {
+function Td({ children }: { children: ReactNode }) {
   return <td className="px-4 py-3 text-sm text-slate-700">{children}</td>;
 }
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(value ?? 0);
-}
