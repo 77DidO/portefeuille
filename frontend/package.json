@@ -19,6 +19,8 @@
     "zustand": "4.5.2"
   },
   "devDependencies": {
+    "eslint": "8.57.0",
+    "eslint-config-next": "14.2.5",
     "@types/node": "20.12.7",
     "@types/react": "18.2.37",
     "@types/react-dom": "18.2.15",
