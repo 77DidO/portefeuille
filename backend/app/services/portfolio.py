@@ -47,19 +47,24 @@ def compute_holdings(db: Session) -> Tuple[List[HoldingView], Dict[str, float]]:
     realized_total = 0.0
 
     for tx in txs:
-        symbol = (tx.symbol_or_isin or tx.asset).upper()
+        symbol = (tx.symbol_or_isin or tx.asset or "").upper()
         total_eur = tx.total_eur
         if tx.operation.upper() == "BUY":
             fifo.buy(symbol, tx.quantity, total_eur + tx.fee_eur)
         elif tx.operation.upper() == "SELL":
-            asset_code = (tx.asset or "").strip()
+            asset_code = (tx.asset or "").strip().upper()
+            symbol_code = (tx.symbol_or_isin or "").strip().upper()
+
+            def _is_currency(code: str) -> bool:
+                return len(code) == 3 and code.isalpha()
+
             is_cash_sell = (
-                not (tx.symbol_or_isin or "").strip()
-                and len(asset_code) == 3
-                and asset_code.isalpha()
+                (not symbol_code and _is_currency(asset_code))
+                or (not asset_code and _is_currency(symbol_code))
+                or (symbol_code == asset_code and _is_currency(symbol_code))
             )
             if is_cash_sell:
-                realized_total += total_eur
+                realized_total += total_eur - tx.fee_eur
                 continue
             realized_total += fifo.sell(symbol, tx.quantity, total_eur, fee_eur=tx.fee_eur)
         elif tx.operation.upper() == "DIVIDEND":
