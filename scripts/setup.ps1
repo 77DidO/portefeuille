@@ -108,15 +108,23 @@ switch ($Command) {
         if (Get-Command npm -ErrorAction SilentlyContinue) {
             Write-Host "Installation des dépendances frontend"
             Push-Location $FrontendDir
-            $previousStrictMode = $PSStrictModePreference
+            $strictModeVar = Get-Variable -Name 'PSStrictModePreference' -ErrorAction SilentlyContinue
+            $strictModeDefined = $null -ne $strictModeVar
+            if ($strictModeDefined) {
+                $previousStrictMode = $strictModeVar.Value
+            } else {
+                $previousStrictMode = $null
+            }
+
             try {
                 Set-StrictMode -Off
                 npm install
             } finally {
-                if ($null -eq $previousStrictMode) {
-                    Set-StrictMode -Off
-                } else {
+                if ($strictModeDefined -and $null -ne $previousStrictMode) {
                     Set-StrictMode -Version $previousStrictMode
+                } else {
+                    Set-StrictMode -Version Latest
+
                 }
                 Pop-Location
             }
