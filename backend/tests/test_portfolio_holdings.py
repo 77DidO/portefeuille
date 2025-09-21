@@ -78,3 +78,34 @@ def test_compute_holdings_handles_fiat_sell(tmp_path):
         assert totals["realized_pnl"] == pytest.approx(250.0)
     finally:
         db.close()
+
+
+def test_compute_holdings_handles_symbol_only_fiat_sell(tmp_path):
+    Session = setup_db(tmp_path)
+    db = Session()
+    try:
+        db.add(
+            Transaction(
+                source="broker",
+                type_portefeuille="CTO",
+                operation="SELL",
+                asset="Savings Account",
+                symbol_or_isin="EUR",
+                quantity=0.0,
+                unit_price_eur=1.0,
+                fee_eur=2.5,
+                total_eur=500.0,
+                ts=datetime(2024, 2, 1, tzinfo=timezone.utc),
+                notes="",
+                external_ref="cash-out-eur",
+            )
+        )
+        db.commit()
+
+        _cache.clear()
+        holdings, totals = compute_holdings(db)
+
+        assert holdings == []
+        assert totals["realized_pnl"] == pytest.approx(497.5)
+    finally:
+        db.close()
