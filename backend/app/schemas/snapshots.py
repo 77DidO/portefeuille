@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class SnapshotResponse(BaseModel):
@@ -13,8 +13,7 @@ class SnapshotResponse(BaseModel):
     value_total_eur: float
     pnl_total_eur: float
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SnapshotRangeResponse(BaseModel):
