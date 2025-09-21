@@ -4,6 +4,33 @@ Application mono-utilisateur pour suivre un portefeuille PEA et Crypto (Binance)
 
 ## Démarrage rapide
 
+### Avec le script utilitaire
+
+> Prérequis : `python3`, `npm` et (facultatif) `docker`/`docker-compose` doivent être disponibles sur votre machine.
+
+```bash
+# Installation des dépendances backend et frontend
+./scripts/setup.sh install
+
+# Lancement du backend FastAPI
+./scripts/setup.sh backend
+
+# Lancement du frontend Next.js
+./scripts/setup.sh frontend
+```
+
+Autres commandes utiles :
+
+```bash
+# Exécuter les tests backend
+./scripts/setup.sh test
+
+# Démarrer l'application via Docker
+./scripts/setup.sh docker
+```
+
+### Installation manuelle
+
 ```bash
 cp .env.example .env
 python -m venv .venv && source .venv/bin/activate
