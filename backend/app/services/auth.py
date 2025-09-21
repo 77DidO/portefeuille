@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
 from passlib.exc import UnknownHashError
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -20,7 +21,17 @@ from app.utils.time import utc_now
 PASSWORD_KEY = "password_hash"
 
 
+def _ensure_settings_table(db: Session) -> None:
+    """Make sure the settings table exists before accessing it."""
+    bind = db.get_bind()
+    if bind is None:
+        return
+    # ``checkfirst`` avoids issuing DDL when the table is already present.
+    Setting.__table__.create(bind=bind, checkfirst=True)
+
+
 def _store_password_hash(db: Session, hashed_password: str) -> str:
+    _ensure_settings_table(db)
     setting = db.get(Setting, PASSWORD_KEY)
     if setting:
         setting.value = hashed_password
@@ -59,7 +70,14 @@ def _default_password_hash(db: Session) -> str:
 
 
 def _load_password_hash(db: Session) -> str:
-    setting = db.get(Setting, PASSWORD_KEY)
+    try:
+        _ensure_settings_table(db)
+        setting = db.get(Setting, PASSWORD_KEY)
+    except OperationalError:
+        # If the schema has not been initialised yet, create the table and retry
+        db.rollback()
+        _ensure_settings_table(db)
+        setting = db.get(Setting, PASSWORD_KEY)
     if setting:
         stored_hash = setting.value or ""
         if _is_valid_hash(stored_hash):
