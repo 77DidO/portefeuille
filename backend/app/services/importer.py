@@ -41,7 +41,23 @@ class Importer:
         with zipfile.ZipFile(io.BytesIO(content)) as zf:
             if "transactions.csv" not in zf.namelist():
                 raise ImportErrorDetail("transactions.csv manquant")
-            self._import_transactions(zf.read("transactions.csv"))
+            csv_bytes = zf.read("transactions.csv")
+        self.import_transactions_csv(csv_bytes)
+
+    def import_transactions_csv(self, content: bytes | str | io.IOBase) -> None:
+        if isinstance(content, io.IOBase):
+            raw_content = content.read()
+        else:
+            raw_content = content
+
+        if isinstance(raw_content, str):
+            csv_bytes = raw_content.encode("utf-8")
+        elif isinstance(raw_content, (bytes, bytearray)):
+            csv_bytes = bytes(raw_content)
+        else:
+            raise ImportErrorDetail("Flux CSV invalide")
+
+        self._import_transactions(csv_bytes)
 
     def _import_transactions(self, csv_bytes: bytes) -> None:
         text = csv_bytes.decode("utf-8")
