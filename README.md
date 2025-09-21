@@ -25,6 +25,23 @@ Le script crée un environnement virtuel Python local (`.venv`), installe les d�
 
 Appuyez sur `Ctrl+C` pour arrêter les deux services.
 
+### Script automatisé (Windows PowerShell)
+
+Sur Windows, un script PowerShell est fourni. Depuis un terminal PowerShell :
+
+```powershell
+Set-ExecutionPolicy -Scope Process RemoteSigned
+./init_local.ps1
+```
+
+
+Le script crée l'environnement virtuel Python (`.venv`), installe les dépendances, exécute `npm install` puis lance :
+
+- Backend : `uvicorn app.main:app --reload --port 8000`
+- Frontend : `npm run dev` avec `NEXT_PUBLIC_API_BASE` défini par défaut sur `http://localhost:8000`
+
+Utilisez `Ctrl+C` pour stopper les deux services.
+
 ### Installation manuelle
 
 1. Copier la configuration d'exemple si besoin :
