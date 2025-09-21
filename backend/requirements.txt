@@ -4,6 +4,7 @@ SQLAlchemy>=2.0
 alembic
 APScheduler
 pydantic[email]
+pydantic-settings
 python-dotenv
 passlib[bcrypt]
 requests
