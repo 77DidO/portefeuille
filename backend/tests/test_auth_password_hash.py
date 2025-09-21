@@ -18,8 +18,10 @@ from app.models.settings import Setting  # noqa: E402
 from app.services import auth as auth_service  # noqa: E402
 
 
+
 @pytest.fixture()
 def db_session():
+
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     TestingSessionLocal = sessionmaker(bind=engine)
@@ -66,3 +68,4 @@ def test_authenticate_recovers_from_invalid_stored_hash(monkeypatch, db_session)
     assert stored_setting is not None
     assert stored_setting.value != placeholder_hash
     assert verify_password("admin12345!", stored_setting.value)
+
