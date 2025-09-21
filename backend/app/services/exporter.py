@@ -106,7 +106,7 @@ def _write_holdings(db: Session, zf: zipfile.ZipFile) -> None:
     _write_csv(zf, "holdings.csv", CSV_FILES["holdings.csv"], [
         [
             row.as_of.isoformat(),
-            "CRYPTO" if row.asset.upper() in {"BTC", "ETH"} else "PEA",
+            row.type_portefeuille,
             row.asset,
             row.symbol_or_isin,
             row.quantity,
