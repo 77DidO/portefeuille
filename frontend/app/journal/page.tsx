@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { api } from "@/lib/api";
-import { useRequireAuth } from "@/lib/auth";
 import {
   formatDateTime,
   formatNumber,
@@ -35,7 +34,6 @@ const STATUS_OPTIONS = [
 ];
 
 export default function JournalPage() {
-  useRequireAuth();
   const [trades, setTrades] = useState<JournalTrade[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

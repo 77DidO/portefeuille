@@ -6,10 +6,7 @@ APScheduler
 pydantic[email]
 pydantic-settings
 python-dotenv
-passlib[bcrypt]
 requests
-python-jose[cryptography]
-bcrypt
 python-multipart
 pandas
 numpy

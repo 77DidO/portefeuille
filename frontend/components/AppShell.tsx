@@ -4,8 +4,6 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { useAuthStore } from "@/lib/store";
-
 const NAV_ITEMS = [
   { href: "/", label: "Tableau de bord" },
   { href: "/transactions", label: "Transactions" },
@@ -16,7 +14,6 @@ const NAV_ITEMS = [
 
 export function AppShell({ children, mainClassName }: { children: ReactNode; mainClassName?: string }) {
   const pathname = usePathname();
-  const logout = useAuthStore((state) => state.logout);
 
   const mainClasses = ["mx-auto", "w-full", "px-6", "py-8", mainClassName ?? "max-w-6xl"].filter(Boolean).join(" ");
 
@@ -52,9 +49,7 @@ export function AppShell({ children, mainClassName }: { children: ReactNode; mai
               <Link className="text-indigo-600 hover:underline" href="/settings">
                 Configuration
               </Link>
-              <button className="text-slate-500 hover:text-red-500" onClick={logout}>
-                Déconnexion
-              </button>
+              <span className="text-slate-400">Mode local</span>
             </div>
           </div>
         </div>

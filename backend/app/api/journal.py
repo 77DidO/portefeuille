@@ -11,12 +11,12 @@ router = APIRouter(prefix="/journal", tags=["journal"])
 
 
 @router.get("/", response_model=list[JournalTradeResponse])
-def list_trades(db: Session = Depends(deps.get_db), _: dict = Depends(deps.get_current_user)):
+def list_trades(db: Session = Depends(deps.get_db)):
     return db.query(JournalTrade).order_by(JournalTrade.id.desc()).all()
 
 
 @router.post("/", response_model=JournalTradeResponse)
-def create_trade(payload: JournalTradeCreate, db: Session = Depends(deps.get_db), _: dict = Depends(deps.get_current_user)):
+def create_trade(payload: JournalTradeCreate, db: Session = Depends(deps.get_db)):
     trade = JournalTrade(**payload.dict())
     db.add(trade)
     db.commit()
@@ -29,7 +29,6 @@ def update_trade(
     trade_id: int,
     payload: JournalTradeUpdate,
     db: Session = Depends(deps.get_db),
-    _: dict = Depends(deps.get_current_user),
 ):
     trade = db.get(JournalTrade, trade_id)
     if not trade:

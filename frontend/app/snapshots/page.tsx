@@ -5,7 +5,6 @@ import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tool
 
 import { AppShell } from "@/components/AppShell";
 import { api } from "@/lib/api";
-import { useRequireAuth } from "@/lib/auth";
 import {
   formatCurrency,
   formatDate,
@@ -16,7 +15,6 @@ import {
 import { formatErrorDetail } from "@/lib/errors";
 
 export default function SnapshotsPage() {
-  useRequireAuth();
   const [snapshots, setSnapshots] = useState<SnapshotResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
