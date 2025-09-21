@@ -52,6 +52,15 @@ def compute_holdings(db: Session) -> Tuple[List[HoldingView], Dict[str, float]]:
         if tx.operation.upper() == "BUY":
             fifo.buy(symbol, tx.quantity, total_eur + tx.fee_eur)
         elif tx.operation.upper() == "SELL":
+            asset_code = (tx.asset or "").strip()
+            is_cash_sell = (
+                not (tx.symbol_or_isin or "").strip()
+                and len(asset_code) == 3
+                and asset_code.isalpha()
+            )
+            if is_cash_sell:
+                realized_total += total_eur
+                continue
             realized_total += fifo.sell(symbol, tx.quantity, total_eur, fee_eur=tx.fee_eur)
         elif tx.operation.upper() == "DIVIDEND":
             fifo.dividend(symbol, total_eur - tx.fee_eur)
