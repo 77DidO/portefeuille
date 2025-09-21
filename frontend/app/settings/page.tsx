@@ -52,8 +52,10 @@ export default function SettingsPage() {
   async function handleSaveBinance(e: React.FormEvent) {
     e.preventDefault();
     try {
+      const hasCredentials = Boolean(binanceKey || binanceSecret);
       await api.post("/config/api/binance", { key: binanceKey, secret: binanceSecret });
       setStatus("Clés Binance sauvegardées");
+      setBinanceConfigured(hasCredentials);
     } catch (err: any) {
       setStatus(formatErrorDetail(err.response?.data?.detail, "Impossible d'enregistrer"));
     }
