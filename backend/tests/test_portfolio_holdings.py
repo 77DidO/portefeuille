@@ -8,7 +8,9 @@ from sqlalchemy.orm import sessionmaker
 
 from app.models.base import Base
 from app.models.transactions import Transaction
-from app.services.portfolio import _cache, compute_holdings
+import httpx
+
+from app.services.portfolio import _cache, _price_cache, compute_holdings
 
 
 def setup_db(tmp_path):
@@ -19,7 +21,10 @@ def setup_db(tmp_path):
     return sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 
-def test_compute_holdings_handles_fiat_sell(tmp_path):
+def test_compute_holdings_handles_fiat_sell(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.portfolio.get_market_price", lambda symbol, type_portefeuille=None: 100.0
+    )
     Session = setup_db(tmp_path)
     db = Session()
     try:
@@ -72,6 +77,7 @@ def test_compute_holdings_handles_fiat_sell(tmp_path):
         db.commit()
 
         _cache.clear()
+        _price_cache.clear()
         holdings, totals = compute_holdings(db)
 
         assert any(h.asset == "ACME" for h in holdings)
@@ -80,7 +86,10 @@ def test_compute_holdings_handles_fiat_sell(tmp_path):
         db.close()
 
 
-def test_compute_holdings_handles_symbol_only_fiat_sell(tmp_path):
+def test_compute_holdings_handles_symbol_only_fiat_sell(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.portfolio.get_market_price", lambda symbol, type_portefeuille=None: 100.0
+    )
     Session = setup_db(tmp_path)
     db = Session()
     try:
@@ -103,6 +112,7 @@ def test_compute_holdings_handles_symbol_only_fiat_sell(tmp_path):
         db.commit()
 
         _cache.clear()
+        _price_cache.clear()
         holdings, totals = compute_holdings(db)
 
         assert holdings == []
@@ -111,7 +121,10 @@ def test_compute_holdings_handles_symbol_only_fiat_sell(tmp_path):
         db.close()
 
 
-def test_compute_holdings_respects_crypto_portfolio_type(tmp_path):
+def test_compute_holdings_respects_crypto_portfolio_type(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.portfolio.get_market_price", lambda symbol, type_portefeuille=None: 100.0
+    )
     Session = setup_db(tmp_path)
     db = Session()
     try:
@@ -150,6 +163,7 @@ def test_compute_holdings_respects_crypto_portfolio_type(tmp_path):
         db.commit()
 
         _cache.clear()
+        _price_cache.clear()
         holdings, _ = compute_holdings(db)
 
         crypto_assets = {h.asset for h in holdings if h.type_portefeuille == "CRYPTO"}
@@ -157,5 +171,114 @@ def test_compute_holdings_respects_crypto_portfolio_type(tmp_path):
 
         assert crypto_assets == {"BTC"}
         assert "SOL" in pea_assets
+    finally:
+        db.close()
+
+
+def test_compute_holdings_uses_market_prices(tmp_path, monkeypatch):
+    Session = setup_db(tmp_path)
+    db = Session()
+    try:
+        db.add(
+            Transaction(
+                source="broker",
+                type_portefeuille="CTO",
+                operation="BUY",
+                asset="Acme Corp",
+                symbol_or_isin="ACME",
+                quantity=10.0,
+                unit_price_eur=100.0,
+                fee_eur=0.0,
+                total_eur=1000.0,
+                ts=datetime(2024, 4, 1, tzinfo=timezone.utc),
+                notes="",
+                external_ref="buy-acme",
+            )
+        )
+        db.commit()
+
+        def fake_http_get(self, url, params):
+            class DummyResponse:
+                def raise_for_status(self_inner):
+                    return None
+
+                def json(self_inner):
+                    return {
+                        "quoteResponse": {
+                            "result": [
+                                {
+                                    "regularMarketPrice": 125.5,
+                                }
+                            ]
+                        }
+                    }
+
+            return DummyResponse()
+
+        monkeypatch.setattr(httpx.Client, "get", fake_http_get, raising=False)
+
+        _cache.clear()
+        _price_cache.clear()
+        holdings, totals = compute_holdings(db)
+
+        assert holdings[0].market_price_eur == pytest.approx(125.5)
+        assert holdings[0].market_value_eur == pytest.approx(1255.0)
+        assert holdings[0].pl_eur == pytest.approx(255.0)
+        assert holdings[0].pl_pct == pytest.approx(25.5)
+        assert totals["total_value"] == pytest.approx(1255.0)
+        assert totals["latent_pnl"] == pytest.approx(255.0)
+    finally:
+        db.close()
+
+
+def test_compute_holdings_reuses_cached_price_on_failure(tmp_path, monkeypatch):
+    Session = setup_db(tmp_path)
+    db = Session()
+    try:
+        db.add(
+            Transaction(
+                source="broker",
+                type_portefeuille="CTO",
+                operation="BUY",
+                asset="Acme Corp",
+                symbol_or_isin="ACME",
+                quantity=2.0,
+                unit_price_eur=100.0,
+                fee_eur=0.0,
+                total_eur=200.0,
+                ts=datetime(2024, 4, 10, tzinfo=timezone.utc),
+                notes="",
+                external_ref="buy-acme-2",
+            )
+        )
+        db.commit()
+
+        def fake_http_success(self, url, params):
+            class DummyResponse:
+                def raise_for_status(self_inner):
+                    return None
+
+                def json(self_inner):
+                    return {
+                        "quoteResponse": {"result": [{"regularMarketPrice": 150.0}]}
+                    }
+
+            return DummyResponse()
+
+        def fake_http_failure(self, url, params):
+            raise httpx.ReadTimeout("timeout")
+
+        monkeypatch.setattr(httpx.Client, "get", fake_http_success, raising=False)
+
+        _cache.clear()
+        _price_cache.clear()
+        holdings, _ = compute_holdings(db)
+        assert holdings[0].market_price_eur == pytest.approx(150.0)
+
+        monkeypatch.setattr(httpx.Client, "get", fake_http_failure, raising=False)
+
+        _cache.clear()
+        holdings, _ = compute_holdings(db)
+        assert holdings[0].market_price_eur == pytest.approx(150.0)
     finally:
         db.close()
