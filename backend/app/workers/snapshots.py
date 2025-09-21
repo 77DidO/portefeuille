@@ -43,6 +43,7 @@ def run_snapshot(db: Session) -> Snapshot:
                 pl_eur=holding.pl_eur,
                 pl_pct=holding.pl_pct,
                 as_of=holding.as_of,
+                type_portefeuille=holding.type_portefeuille,
             )
         )
     db.commit()

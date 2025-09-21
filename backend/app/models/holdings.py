@@ -22,3 +22,4 @@ class Holding(Base):
     pl_eur = Column(Float, nullable=False)
     pl_pct = Column(Float, nullable=False)
     as_of = Column(DateTime(timezone=True), nullable=False, index=True)
+    type_portefeuille = Column(String(16), nullable=False)
