@@ -3,14 +3,21 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.api import deps
 from app.models.snapshots import Snapshot
-from app.schemas.portfolio import HoldingResponse, HoldingsResponse, PnLPoint, PnLRangeResponse
+from app.schemas.portfolio import (
+    HoldingDetailResponse,
+    HoldingHistoryPoint,
+    HoldingResponse,
+    HoldingsResponse,
+    PnLPoint,
+    PnLRangeResponse,
+)
 from app.schemas.snapshots import SnapshotResponse
-from app.services.portfolio import compute_holdings
+from app.services.portfolio import HoldingNotFound, compute_holding_detail, compute_holdings
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 
@@ -43,6 +50,49 @@ def get_holdings(db: Session = Depends(deps.get_db), _: dict = Depends(deps.get_
         else 0.0,
     }
     return HoldingsResponse(holdings=holdings, summary=summary)
+
+
+@router.get("/holdings/{identifier}", response_model=HoldingDetailResponse)
+def get_holding_detail(
+    identifier: str,
+    db: Session = Depends(deps.get_db),
+    _: dict = Depends(deps.get_current_user),
+) -> HoldingDetailResponse:
+    try:
+        detail = compute_holding_detail(db, identifier)
+    except HoldingNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    history = [
+        HoldingHistoryPoint(
+            ts=point.ts,
+            quantity=point.quantity,
+            invested_eur=point.invested_eur,
+            market_price_eur=point.market_price_eur,
+            market_value_eur=point.market_value_eur,
+            pl_eur=point.pl_eur,
+            pl_pct=point.pl_pct,
+        )
+        for point in detail.history
+    ]
+
+    return HoldingDetailResponse(
+        asset=detail.asset,
+        symbol_or_isin=detail.symbol_or_isin,
+        quantity=detail.quantity,
+        pru_eur=detail.pru_eur,
+        invested_eur=detail.invested_eur,
+        market_price_eur=detail.market_price_eur,
+        market_value_eur=detail.market_value_eur,
+        pl_eur=detail.pl_eur,
+        pl_pct=detail.pl_pct,
+        type_portefeuille=detail.type_portefeuille,
+        as_of=detail.as_of,
+        history=history,
+        realized_pnl_eur=detail.realized_pnl_eur,
+        dividends_eur=detail.dividends_eur,
+        history_available=detail.history_available,
+    )
 
 
 @router.get("/pnl", response_model=PnLRangeResponse)

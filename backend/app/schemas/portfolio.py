@@ -26,6 +26,23 @@ class HoldingResponse(HoldingBase):
         orm_mode = True
 
 
+class HoldingHistoryPoint(BaseModel):
+    ts: datetime
+    quantity: float
+    invested_eur: float
+    market_price_eur: float
+    market_value_eur: float
+    pl_eur: float
+    pl_pct: float
+
+
+class HoldingDetailResponse(HoldingResponse):
+    history: List[HoldingHistoryPoint]
+    realized_pnl_eur: float
+    dividends_eur: float
+    history_available: bool
+
+
 class HoldingSummary(BaseModel):
     total_value_eur: float
     total_invested_eur: float

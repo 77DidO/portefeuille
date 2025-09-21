@@ -10,9 +10,11 @@ from typing import Dict, List, Tuple
 import httpx
 
 from cachetools import TTLCache, cached
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models.transactions import Transaction
+from app.models.holdings import Holding
 from app.models.settings import Setting
 from app.services.fifo import FIFOPortfolio
 from app.services import binance
@@ -36,6 +38,25 @@ class HoldingView:
     as_of: datetime
 
 
+@dataclass
+class HoldingHistoryPointView:
+    ts: datetime
+    quantity: float
+    invested_eur: float
+    market_price_eur: float
+    market_value_eur: float
+    pl_eur: float
+    pl_pct: float
+
+
+@dataclass
+class HoldingDetailView(HoldingView):
+    history: List[HoldingHistoryPointView]
+    realized_pnl_eur: float
+    dividends_eur: float
+    history_available: bool
+
+
 _cache = TTLCache(maxsize=1, ttl=120)
 _price_cache: TTLCache[Tuple[str, str], float] = TTLCache(maxsize=128, ttl=300)
 _quote_alias_cache: TTLCache[str, Dict[str, str]] = TTLCache(maxsize=1, ttl=300)
@@ -46,6 +67,10 @@ _QUOTE_ALIAS_CACHE_KEY = "aliases"
 
 
 class MarketPriceUnavailable(RuntimeError):
+    pass
+
+
+class HoldingNotFound(RuntimeError):
     pass
 
 
@@ -278,3 +303,94 @@ def compute_holdings(db: Session) -> Tuple[List[HoldingView], Dict[str, float]]:
     }
 
     return holdings, totals
+
+
+def compute_holding_detail(db: Session, identifier: str) -> HoldingDetailView:
+    if not identifier:
+        raise HoldingNotFound("Missing holding identifier")
+
+    normalized = identifier.strip().upper()
+    holdings, _ = compute_holdings(db)
+    try:
+        holding = next(
+            h
+            for h in holdings
+            if (h.symbol_or_isin or "").upper() == normalized or h.asset.upper() == normalized
+        )
+    except StopIteration as exc:
+        raise HoldingNotFound(f"Holding '{identifier}' not found") from exc
+
+    history_rows = (
+        db.query(Holding)
+        .filter(
+            or_(
+                func.upper(Holding.symbol_or_isin) == normalized,
+                func.upper(Holding.asset) == normalized,
+            )
+        )
+        .order_by(Holding.as_of.asc())
+        .all()
+    )
+
+    history = [
+        HoldingHistoryPointView(
+            ts=row.as_of,
+            quantity=row.quantity,
+            invested_eur=row.invested_eur,
+            market_price_eur=row.market_price_eur,
+            market_value_eur=row.market_value_eur,
+            pl_eur=row.pl_eur,
+            pl_pct=row.pl_pct,
+        )
+        for row in history_rows
+    ]
+
+    tx_rows = (
+        db.query(Transaction)
+        .filter(
+            or_(
+                func.upper(Transaction.symbol_or_isin) == normalized,
+                func.upper(Transaction.asset) == normalized,
+            )
+        )
+        .order_by(Transaction.ts.asc(), Transaction.id.asc())
+        .all()
+    )
+
+    fifo = FIFOPortfolio()
+    for tx in tx_rows:
+        operation = (tx.operation or "").upper()
+        if operation == "BUY":
+            fifo.buy(normalized, tx.quantity, tx.total_eur + tx.fee_eur)
+        elif operation == "SELL":
+            fifo.sell(normalized, tx.quantity, tx.total_eur, fee_eur=tx.fee_eur)
+        elif operation == "DIVIDEND":
+            fifo.dividend(normalized, tx.total_eur - tx.fee_eur)
+        else:
+            fifo.dividend(normalized, tx.total_eur)
+
+    state = fifo.as_dict().get(normalized)
+    realized = state.realized_pnl if state else 0.0
+    dividends = sum(
+        (tx.total_eur - tx.fee_eur)
+        for tx in tx_rows
+        if (tx.operation or "").upper() == "DIVIDEND"
+    )
+
+    return HoldingDetailView(
+        asset=holding.asset,
+        symbol_or_isin=holding.symbol_or_isin,
+        quantity=holding.quantity,
+        pru_eur=holding.pru_eur,
+        invested_eur=holding.invested_eur,
+        market_price_eur=holding.market_price_eur,
+        market_value_eur=holding.market_value_eur,
+        pl_eur=holding.pl_eur,
+        pl_pct=holding.pl_pct,
+        type_portefeuille=holding.type_portefeuille,
+        as_of=holding.as_of,
+        history=history,
+        realized_pnl_eur=realized,
+        dividends_eur=dividends,
+        history_available=bool(history),
+    )

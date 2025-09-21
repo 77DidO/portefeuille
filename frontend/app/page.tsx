@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
 
@@ -190,7 +191,14 @@ export default function DashboardPage() {
                 {holdings.map((holding) => (
                   <tr key={`${holding.asset}-${holding.symbol_or_isin}`} className="hover:bg-slate-50">
                     <Td>{holding.type_portefeuille}</Td>
-                    <Td>{holding.symbol_or_isin ?? holding.asset}</Td>
+                    <Td>
+                      <Link
+                        href={`/positions/${encodeURIComponent(holding.symbol_or_isin ?? holding.asset)}`}
+                        className="font-medium text-indigo-600 hover:underline"
+                      >
+                        {holding.symbol_or_isin ?? holding.asset}
+                      </Link>
+                    </Td>
                     <Td>{holding.quantity.toFixed(4)}</Td>
                     <Td>{formatCurrency(holding.pru_eur)}</Td>
                     <Td>{formatCurrency(holding.market_price_eur)}</Td>

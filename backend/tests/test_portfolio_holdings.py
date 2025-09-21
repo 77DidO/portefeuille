@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.models.base import Base
 from app.models.transactions import Transaction
+from app.models.holdings import Holding
 from app.models.settings import Setting
 import httpx
 
@@ -16,7 +17,9 @@ from app.services.portfolio import (
     _cache,
     _price_cache,
     clear_quote_alias_cache,
+    compute_holding_detail,
     compute_holdings,
+    HoldingNotFound,
 )
 from app.utils.settings_keys import QUOTE_ALIAS_SETTING_KEY
 
@@ -354,5 +357,154 @@ def test_compute_holdings_reuses_cached_price_on_failure(tmp_path, monkeypatch):
         _cache.clear()
         holdings, _ = compute_holdings(db)
         assert holdings[0].market_price_eur == pytest.approx(150.0)
+    finally:
+        db.close()
+
+
+def test_compute_holding_detail_returns_history(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.portfolio.get_market_price", lambda symbol, type_portefeuille=None: 125.0
+    )
+    Session = setup_db(tmp_path)
+    db = Session()
+    try:
+        db.add_all(
+            [
+                Transaction(
+                    source="broker",
+                    type_portefeuille="CTO",
+                    operation="BUY",
+                    asset="Acme Corp",
+                    symbol_or_isin="ACME",
+                    quantity=2.0,
+                    unit_price_eur=100.0,
+                    fee_eur=0.0,
+                    total_eur=200.0,
+                    ts=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                    notes="",
+                    external_ref="buy-acme-1",
+                ),
+                Transaction(
+                    source="broker",
+                    type_portefeuille="CTO",
+                    operation="SELL",
+                    asset="Acme Corp",
+                    symbol_or_isin="ACME",
+                    quantity=1.0,
+                    unit_price_eur=150.0,
+                    fee_eur=0.0,
+                    total_eur=150.0,
+                    ts=datetime(2024, 2, 1, tzinfo=timezone.utc),
+                    notes="",
+                    external_ref="sell-acme-1",
+                ),
+                Transaction(
+                    source="broker",
+                    type_portefeuille="CTO",
+                    operation="DIVIDEND",
+                    asset="Acme Corp",
+                    symbol_or_isin="ACME",
+                    quantity=0.0,
+                    unit_price_eur=0.0,
+                    fee_eur=0.0,
+                    total_eur=10.0,
+                    ts=datetime(2024, 2, 15, tzinfo=timezone.utc),
+                    notes="",
+                    external_ref="dividend-acme",
+                ),
+            ]
+        )
+        db.add_all(
+            [
+                Holding(
+                    asset="Acme Corp",
+                    symbol_or_isin="ACME",
+                    quantity=1.0,
+                    pru_eur=100.0,
+                    invested_eur=100.0,
+                    market_price_eur=110.0,
+                    market_value_eur=110.0,
+                    pl_eur=10.0,
+                    pl_pct=10.0,
+                    as_of=datetime(2024, 2, 1, tzinfo=timezone.utc),
+                ),
+                Holding(
+                    asset="Acme Corp",
+                    symbol_or_isin="ACME",
+                    quantity=1.0,
+                    pru_eur=100.0,
+                    invested_eur=100.0,
+                    market_price_eur=125.0,
+                    market_value_eur=125.0,
+                    pl_eur=25.0,
+                    pl_pct=25.0,
+                    as_of=datetime(2024, 3, 1, tzinfo=timezone.utc),
+                ),
+            ]
+        )
+        db.commit()
+
+        _cache.clear()
+        _price_cache.clear()
+
+        detail = compute_holding_detail(db, "ACME")
+
+        assert detail.asset == "ACME"
+        assert detail.history_available is True
+        assert len(detail.history) == 2
+        assert detail.realized_pnl_eur == pytest.approx(60.0)
+        assert detail.dividends_eur == pytest.approx(10.0)
+    finally:
+        db.close()
+
+
+def test_compute_holding_detail_handles_missing_history(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.portfolio.get_market_price", lambda symbol, type_portefeuille=None: 50.0
+    )
+    Session = setup_db(tmp_path)
+    db = Session()
+    try:
+        db.add(
+            Transaction(
+                source="broker",
+                type_portefeuille="CTO",
+                operation="BUY",
+                asset="Widget",
+                symbol_or_isin="WID",
+                quantity=3.0,
+                unit_price_eur=40.0,
+                fee_eur=0.0,
+                total_eur=120.0,
+                ts=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                notes="",
+                external_ref="buy-widget",
+            )
+        )
+        db.commit()
+
+        _cache.clear()
+        _price_cache.clear()
+
+        detail = compute_holding_detail(db, "WID")
+
+        assert detail.history == []
+        assert detail.history_available is False
+    finally:
+        db.close()
+
+
+def test_compute_holding_detail_raises_for_unknown_asset(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.portfolio.get_market_price", lambda symbol, type_portefeuille=None: 42.0
+    )
+    Session = setup_db(tmp_path)
+    db = Session()
+    try:
+        _cache.clear()
+        _price_cache.clear()
+
+        with pytest.raises(HoldingNotFound):
+            compute_holding_detail(db, "UNKNOWN")
     finally:
         db.close()
