@@ -76,11 +76,15 @@ def compute_holdings(db: Session) -> Tuple[List[HoldingView], Dict[str, float]]:
     txs: List[Transaction] = db.query(Transaction).order_by(Transaction.ts.asc(), Transaction.id.asc()).all()
     fifo = FIFOPortfolio()
     holdings_map: Dict[str, HoldingView] = {}
+    portfolio_types: Dict[str, str] = {}
     realized_total = 0.0
 
     for tx in txs:
         symbol = (tx.symbol_or_isin or tx.asset or "").upper()
         total_eur = tx.total_eur
+        if symbol and tx.type_portefeuille:
+            portfolio_types[symbol] = tx.type_portefeuille.upper()
+
         if tx.operation.upper() == "BUY":
             fifo.buy(symbol, tx.quantity, total_eur + tx.fee_eur)
         elif tx.operation.upper() == "SELL":
@@ -110,6 +114,7 @@ def compute_holdings(db: Session) -> Tuple[List[HoldingView], Dict[str, float]]:
         invested = cost
         pl_latent = market_value - invested
         pl_pct = (pl_latent / invested * 100.0) if invested else 0.0
+        type_portefeuille = portfolio_types.get(symbol, "PEA")
         holdings.append(
             HoldingView(
                 asset=symbol,
@@ -121,7 +126,7 @@ def compute_holdings(db: Session) -> Tuple[List[HoldingView], Dict[str, float]]:
                 market_value_eur=market_value,
                 pl_eur=pl_latent,
                 pl_pct=pl_pct,
-                type_portefeuille="CRYPTO" if symbol in {"BTC", "ETH"} else "PEA",
+                type_portefeuille=type_portefeuille,
                 as_of=as_of,
             )
         )
