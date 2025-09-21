@@ -50,7 +50,13 @@ class FIFOPortfolio:
             realized_pnl += proportional_proceeds - lot_cost
 
         if qty_to_sell > 1e-6:
-            raise ValueError(f"Not enough quantity to sell for {symbol}")
+            # The dataset contains more quantity to sell than currently tracked in the
+            # FIFO state. Instead of failing, treat the remaining proceeds as fully
+            # realized with an unknown (assumed zero) cost basis. This keeps the
+            # application responsive when historical data is incomplete.
+            proportional_proceeds = proceeds_net * (qty_to_sell / quantity)
+            realized_pnl += proportional_proceeds
+            qty_to_sell = 0.0
 
         state.realized_pnl += realized_pnl
         return realized_pnl
