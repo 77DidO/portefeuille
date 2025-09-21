@@ -34,6 +34,7 @@ Set-ExecutionPolicy -Scope Process RemoteSigned
 ./init_local.ps1
 ```
 
+
 Le script crée l'environnement virtuel Python (`.venv`), installe les dépendances, exécute `npm install` puis lance :
 
 - Backend : `uvicorn app.main:app --reload --port 8000`
