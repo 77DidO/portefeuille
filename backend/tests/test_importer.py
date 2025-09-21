@@ -41,6 +41,18 @@ def test_import_success(db_session):
     assert db_session.query(Transaction).count() == 1
 
 
+def test_import_csv_direct(db_session):
+    csv_content = "source,type_portefeuille,operation,asset,symbol_or_isin,quantity,unit_price_eur,fee_eur,total_eur,ts\n"
+    csv_content += "binance,CRYPTO,BUY,Bitcoin,BTC,0.5,32000,15,16000,2024-02-01T12:00:00Z\n"
+
+    importer = Importer(db_session)
+    importer.import_transactions_csv(csv_content.encode("utf-8"))
+
+    tx = db_session.query(Transaction).one()
+    assert tx.quantity == 0.5
+    assert tx.total_eur == 16000
+
+
 def test_import_missing_column(db_session):
     csv_content = "source,type_portefeuille,asset,symbol_or_isin,quantity,unit_price_eur,fee_eur,total_eur,ts\n"
     importer = Importer(db_session)

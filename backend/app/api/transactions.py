@@ -22,11 +22,17 @@ def import_transactions(
     db: Session = Depends(deps.get_db),
     _: dict = Depends(deps.get_current_user),
 ) -> dict:
-    if not file.filename.endswith(".zip"):
-        raise HTTPException(status_code=400, detail="Format attendu: ZIP")
+    filename = (file.filename or "").lower()
+    if not filename.endswith((".zip", ".csv")):
+        raise HTTPException(status_code=400, detail="Format attendu: ZIP ou CSV")
+
     importer = Importer(db)
+    content = file.file.read()
     try:
-        importer.import_zip(file.file.read())
+        if filename.endswith(".zip"):
+            importer.import_zip(content)
+        else:
+            importer.import_transactions_csv(content)
     except ImportErrorDetail as exc:
         raise HTTPException(status_code=400, detail=f"Import invalide: {exc}") from exc
     from app.services.portfolio import compute_holdings
