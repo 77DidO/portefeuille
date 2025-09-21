@@ -41,7 +41,7 @@ export default function TransactionsPage() {
   async function handleImport(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!selectedFile) {
-      setImportError("Choisissez un fichier ZIP à importer");
+      setImportError("Choisissez un fichier ZIP ou CSV à importer");
       return;
     }
     const formData = new FormData();
@@ -72,7 +72,7 @@ export default function TransactionsPage() {
         <div className="flex flex-col gap-2">
           <h1 className="text-2xl font-semibold text-slate-800">Transactions</h1>
           <p className="text-sm text-slate-500">
-            Historique des opérations importées (limité aux 500 plus récentes). Pour ajouter de nouvelles lignes, téléversez un ZIP
+            Historique des opérations importées (limité aux 500 plus récentes). Pour ajouter de nouvelles lignes, téléversez un ZIP ou un fichier CSV
             contenant au minimum un fichier transactions.csv conforme.
           </p>
         </div>
@@ -80,15 +80,15 @@ export default function TransactionsPage() {
           <h2 className="text-lg font-semibold text-slate-700">Importer un relevé</h2>
           <form onSubmit={handleImport} className="flex flex-col gap-4 md:flex-row md:items-end">
             <div className="flex-1">
-              <label className="block text-sm font-medium text-slate-600">Fichier ZIP</label>
+              <label className="block text-sm font-medium text-slate-600">Fichier ZIP ou CSV</label>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".zip"
+                accept=".zip,.csv"
                 className="mt-1 w-full rounded border border-slate-200 px-3 py-2"
                 onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
               />
-              <p className="mt-1 text-xs text-slate-500">Le ZIP doit contenir un transactions.csv avec les colonnes attendues.</p>
+              <p className="mt-1 text-xs text-slate-500">Le ZIP ou le CSV doit contenir un transactions.csv avec les colonnes attendues.</p>
             </div>
             <button
               type="submit"
