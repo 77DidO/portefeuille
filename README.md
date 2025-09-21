@@ -1,56 +1,77 @@
 # Portefeuille PEA + Crypto
 
-Application mono-utilisateur pour suivre un portefeuille PEA et Crypto (Binance). Cette base fournit un backend FastAPI et un frontend Next.js/Tailwind avec Docker.
+Application mono-utilisateur pour suivre un portefeuille PEA et Crypto (Binance). Cette base fournit un backend FastAPI (SQLite) et un frontend Next.js/Tailwind.
 
-## Démarrage rapide
+## Prérequis
 
-### Avec le script utilitaire (Windows PowerShell)
+- Python **3.11+** avec `venv` et `pip`
+- Node.js **18+** et `npm`
+- SQLite (installé par défaut sur la plupart des distributions)
 
-> Prérequis : `python3`, `npm` et (facultatif) `docker`/`docker-compose` doivent être disponibles sur votre machine et accessibles depuis PowerShell.
+## Installation locale
 
-```powershell
-# Installation des dépendances backend et frontend
-./scripts/setup.ps1 install
+### Script automatisé (Linux / macOS / WSL)
 
-# Lancement du backend FastAPI
-./scripts/setup.ps1 backend
+Un script Bash est fourni pour installer les dépendances et lancer les deux services :
 
-# Lancement du frontend Next.js
-./scripts/setup.ps1 frontend
+```bash
+./init_local.sh
 ```
 
-Autres commandes utiles :
+Le script crée un environnement virtuel Python local (`.venv`), installe les dépendances backend, exécute `npm install` dans `frontend/` puis lance :
+
+- Backend : `uvicorn app.main:app --reload --port 8000`
+- Frontend : `NEXT_PUBLIC_API_BASE=http://localhost:8000 npm run dev`
+
+Appuyez sur `Ctrl+C` pour arrêter les deux services.
+
+### Script automatisé (Windows PowerShell)
+
+Sur Windows, un script PowerShell est fourni. Depuis un terminal PowerShell :
 
 ```powershell
-# Exécuter les tests backend
-./scripts/setup.ps1 test
-
-# Démarrer l'application via Docker
-./scripts/setup.ps1 docker
+Set-ExecutionPolicy -Scope Process RemoteSigned
+./init_local.ps1
 ```
+
+Le script crée l'environnement virtuel Python (`.venv`), installe les dépendances, exécute `npm install` puis lance :
+
+- Backend : `uvicorn app.main:app --reload --port 8000`
+- Frontend : `npm run dev` avec `NEXT_PUBLIC_API_BASE` défini par défaut sur `http://localhost:8000`
+
+Utilisez `Ctrl+C` pour stopper les deux services.
 
 ### Installation manuelle
 
-```bash
-cp .env.example .env
-python -m venv .venv && source .venv/bin/activate
-pip install -r backend/requirements.txt
-uvicorn app.main:app --reload --app-dir backend
-```
+1. Copier la configuration d'exemple si besoin :
 
-Frontend :
+   ```bash
+   cp .env.example .env
+   ```
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
+2. Préparer et activer l'environnement Python :
 
-Ou via Docker :
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -r backend/requirements.txt
+   ```
 
-```bash
-docker-compose up --build
-```
+3. Lancer le backend FastAPI depuis le dossier `backend/` :
+
+   ```bash
+   uvicorn app.main:app --reload --port 8000
+   ```
+
+4. Installer et lancer le frontend Next.js :
+
+   ```bash
+   cd frontend
+   npm install
+   NEXT_PUBLIC_API_BASE=http://localhost:8000 npm run dev
+   ```
+
+Le backend est accessible sur http://localhost:8000 et le frontend sur http://localhost:3000.
 
 ## Tests
 
@@ -65,3 +86,7 @@ pytest
 - Import/export CSV & ZIP
 - Snapshots quotidiens planifiés (APScheduler)
 - UI Next.js avec dashboard et configuration
+
+## Déploiement
+
+Pour une installation serveur sans Docker, un guide systemd + Nginx est disponible dans [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
