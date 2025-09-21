@@ -30,3 +30,22 @@ class TransactionResponse(TransactionBase):
 
     class Config:
         orm_mode = True
+
+
+class TransactionUpdate(BaseModel):
+    source: str | None = None
+    type_portefeuille: constr(to_lower=True) | None = None
+    operation: str | None = None
+    asset: str | None = None
+    symbol_or_isin: Optional[str] = None
+    quantity: float | None = None
+    unit_price_eur: float | None = None
+    fee_eur: float | None = None
+    total_eur: float | None = None
+    ts: datetime | None = None
+    notes: Optional[str] = None
+    external_ref: Optional[str] = None
+
+
+class TransactionDeleteResponse(BaseModel):
+    status: str

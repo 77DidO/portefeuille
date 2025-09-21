@@ -5,7 +5,11 @@ from sqlalchemy.orm import Session
 
 from app.api import deps
 from app.models.transactions import Transaction
-from app.schemas.transactions import TransactionResponse
+from app.schemas.transactions import (
+    TransactionDeleteResponse,
+    TransactionResponse,
+    TransactionUpdate,
+)
 from app.services.importer import ImportErrorDetail, Importer
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -42,3 +46,47 @@ def import_transactions(
 
     compute_holdings.cache_clear()  # invalidate cache after import
     return {"status": "ok"}
+
+
+@router.patch("/{transaction_id}", response_model=TransactionResponse)
+def update_transaction(
+    transaction_id: int,
+    payload: TransactionUpdate,
+    db: Session = Depends(deps.get_db),
+    _: dict = Depends(deps.get_current_user),
+) -> Transaction:
+    transaction = db.get(Transaction, transaction_id)
+    if transaction is None:
+        raise HTTPException(status_code=404, detail="Transaction introuvable")
+
+    updates = payload.dict(exclude_unset=True)
+    for field, value in updates.items():
+        setattr(transaction, field, value)
+
+    db.add(transaction)
+    db.commit()
+    db.refresh(transaction)
+
+    from app.services.portfolio import compute_holdings
+
+    compute_holdings.cache_clear()
+    return transaction
+
+
+@router.delete("/{transaction_id}", response_model=TransactionDeleteResponse)
+def delete_transaction(
+    transaction_id: int,
+    db: Session = Depends(deps.get_db),
+    _: dict = Depends(deps.get_current_user),
+) -> TransactionDeleteResponse:
+    transaction = db.get(Transaction, transaction_id)
+    if transaction is None:
+        raise HTTPException(status_code=404, detail="Transaction introuvable")
+
+    db.delete(transaction)
+    db.commit()
+
+    from app.services.portfolio import compute_holdings
+
+    compute_holdings.cache_clear()
+    return TransactionDeleteResponse(status="ok")
