@@ -3,10 +3,16 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
+from passlib.exc import UnknownHashError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.security import create_access_token, get_password_hash, verify_password
+from app.core.security import (
+    create_access_token,
+    get_password_hash,
+    pwd_context,
+    verify_password,
+)
 from app.models.settings import Setting
 from app.utils.time import utc_now
 
@@ -14,19 +20,51 @@ from app.utils.time import utc_now
 PASSWORD_KEY = "password_hash"
 
 
+def _store_password_hash(db: Session, hashed_password: str) -> str:
+    setting = db.get(Setting, PASSWORD_KEY)
+    if setting:
+        setting.value = hashed_password
+        setting.updated_at = utc_now()
+    else:
+        db.add(Setting(key=PASSWORD_KEY, value=hashed_password, updated_at=utc_now()))
+    db.commit()
+    return hashed_password
+
+
+def _is_valid_hash(candidate: str) -> bool:
+    if not candidate:
+        return False
+
+    try:
+        handler = pwd_context.handler("bcrypt")
+    except KeyError:
+        return False
+
+    try:
+        handler.from_string(candidate)
+    except (ValueError, UnknownHashError):
+        return False
+
+    return True
+
+
+def _default_password_hash(db: Session) -> str:
+    return _store_password_hash(db, get_password_hash("admin12345!"))
+
+
 def _load_password_hash(db: Session) -> str:
     setting = db.get(Setting, PASSWORD_KEY)
     if setting:
-        return setting.value or ""
-    if settings.password_hash:
-        db.add(Setting(key=PASSWORD_KEY, value=settings.password_hash, updated_at=utc_now()))
-        db.commit()
-        return settings.password_hash
+        stored_hash = setting.value or ""
+        if _is_valid_hash(stored_hash):
+            return stored_hash
+
+    configured_hash = settings.password_hash
+    if configured_hash and _is_valid_hash(configured_hash):
+        return _store_password_hash(db, configured_hash)
+
     # fallback default password admin12345!
-    default_hash = get_password_hash("admin12345!")
-    db.add(Setting(key=PASSWORD_KEY, value=default_hash, updated_at=utc_now()))
-    db.commit()
-    return default_hash
+    return _default_password_hash(db)
 
 
 def authenticate(db: Session, username: str, password: str) -> str:
