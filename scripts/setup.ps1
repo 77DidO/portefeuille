@@ -32,6 +32,7 @@ function Resolve-RepoPath {
 
     $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
     $rootPath = Convert-Path (Join-Path $scriptDir '..')
+
     if ([string]::IsNullOrWhiteSpace($RelativePath)) {
         return $rootPath
     }
