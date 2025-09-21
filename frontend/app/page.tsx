@@ -34,7 +34,11 @@ type Summary = {
 };
 
 type HoldingsApiResponse = {
-  holdings: Holding[];
+  holdings: Array<
+    Omit<Holding, "as_of"> & {
+      as_of?: string | null;
+    }
+  >;
   summary: Summary;
 };
 
@@ -64,7 +68,12 @@ export default function DashboardPage() {
           api.get<HoldingsApiResponse>("/portfolio/holdings"),
           api.get<PnLResponse>("/portfolio/pnl")
         ]);
-        setHoldings(holdingsRes.data.holdings);
+        setHoldings(
+          holdingsRes.data.holdings.map((holding) => ({
+            ...holding,
+            as_of: holding.as_of ?? null
+          }))
+        );
         setSummary(holdingsRes.data.summary);
         setSnapshots(pnlRes.data.points);
       } catch (err: any) {
