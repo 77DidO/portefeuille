@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime
+import json
 import re
 from typing import Dict, List, Tuple
 
@@ -12,8 +13,11 @@ from cachetools import TTLCache, cached
 from sqlalchemy.orm import Session
 
 from app.models.transactions import Transaction
+from app.models.settings import Setting
 from app.services.fifo import FIFOPortfolio
 from app.services import binance
+from app.db.session import SessionLocal
+from app.utils.settings_keys import QUOTE_ALIAS_SETTING_KEY
 from app.utils.time import utc_now
 
 
@@ -34,6 +38,11 @@ class HoldingView:
 
 _cache = TTLCache(maxsize=1, ttl=120)
 _price_cache: TTLCache[Tuple[str, str], float] = TTLCache(maxsize=128, ttl=300)
+_quote_alias_cache: TTLCache[str, Dict[str, str]] = TTLCache(maxsize=1, ttl=300)
+
+
+_ISIN_REGEX = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
+_QUOTE_ALIAS_CACHE_KEY = "aliases"
 
 
 class MarketPriceUnavailable(RuntimeError):
@@ -108,15 +117,88 @@ def _fetch_crypto_price(symbol: str) -> float:
         raise MarketPriceUnavailable(f"Binance price fetch failed for {symbol}") from exc
 
 
+def _load_quote_aliases() -> Dict[str, str]:
+    try:
+        return _quote_alias_cache[_QUOTE_ALIAS_CACHE_KEY]
+    except KeyError:
+        pass
+
+    aliases: Dict[str, str] = {}
+    with SessionLocal() as db:
+        setting = db.get(Setting, QUOTE_ALIAS_SETTING_KEY)
+        if setting and setting.value:
+            try:
+                raw = json.loads(setting.value)
+            except json.JSONDecodeError:
+                raw = {}
+            if isinstance(raw, dict):
+                for key, value in raw.items():
+                    if isinstance(key, str) and isinstance(value, str):
+                        aliases[key.strip().upper()] = value.strip().upper()
+
+    _quote_alias_cache[_QUOTE_ALIAS_CACHE_KEY] = aliases
+    return aliases
+
+
+def _search_symbol_for_isin(isin: str) -> str | None:
+    url = "https://query2.finance.yahoo.com/v1/finance/search"
+    params = {"q": isin, "quotesCount": 1, "newsCount": 0}
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.get(url, params=params)
+            resp.raise_for_status()
+            payload = resp.json()
+    except httpx.HTTPError:
+        return None
+
+    quotes = payload.get("quotes") or []
+    for quote in quotes:
+        symbol = quote.get("symbol")
+        if isinstance(symbol, str) and symbol.strip():
+            return symbol.strip().upper()
+    return None
+
+
+def clear_quote_alias_cache() -> None:
+    _quote_alias_cache.clear()
+
+
+def resolve_quote_symbol(symbol: str, type_portefeuille: str | None) -> str:
+    if not symbol:
+        return ""
+
+    normalized = symbol.strip().upper()
+    if (type_portefeuille or "").upper() == "CRYPTO":
+        return normalized
+
+    if not _ISIN_REGEX.match(normalized):
+        return normalized
+
+    aliases = _load_quote_aliases()
+    alias = aliases.get(normalized)
+    if alias:
+        return alias
+
+    fetched = _search_symbol_for_isin(normalized)
+    if fetched:
+        updated_aliases = dict(aliases)
+        updated_aliases[normalized] = fetched
+        _quote_alias_cache[_QUOTE_ALIAS_CACHE_KEY] = updated_aliases
+        return fetched
+
+    return normalized
+
+
 def get_market_price(symbol: str, type_portefeuille: str | None) -> float:
-    cache_key = (symbol.upper(), (type_portefeuille or "").upper())
+    resolved_symbol = resolve_quote_symbol(symbol, type_portefeuille)
+    cache_key = (resolved_symbol.upper(), (type_portefeuille or "").upper())
 
     fetcher = _fetch_equity_price
     if (type_portefeuille or "").upper() == "CRYPTO":
         fetcher = _fetch_crypto_price
 
     try:
-        price = fetcher(symbol)
+        price = fetcher(resolved_symbol)
     except MarketPriceUnavailable:
         if cache_key in _price_cache:
             return _price_cache[cache_key]

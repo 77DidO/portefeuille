@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from typing import Any
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -16,27 +19,72 @@ from app.models.transactions import Transaction
 from app.schemas.settings import SettingResponse, SettingsPayload
 from app.utils.crypto import encrypt
 from app.utils.time import utc_now
-from app.services.portfolio import compute_holdings
+from app.services.portfolio import compute_holdings, clear_quote_alias_cache
+from app.utils.settings_keys import QUOTE_ALIAS_SETTING_KEY
 
 router = APIRouter(prefix="/config", tags=["config"])
 
 
+def _serialize_setting_value(key: str, value: Any) -> str | None:
+    if value is None:
+        return None
+    if key == QUOTE_ALIAS_SETTING_KEY and isinstance(value, dict):
+        return json.dumps(value)
+    if isinstance(value, str):
+        return value
+    return json.dumps(value)
+
+
+def _deserialize_setting_value(key: str, value: str | None) -> Any:
+    if key == QUOTE_ALIAS_SETTING_KEY and value:
+        try:
+            loaded = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        if isinstance(loaded, dict):
+            return {str(k).upper(): str(v) for k, v in loaded.items() if isinstance(k, str) and isinstance(v, str)}
+        return {}
+    return value
+
+
 @router.get("/settings", response_model=list[SettingResponse])
 def list_settings(db: Session = Depends(deps.get_db), _: dict = Depends(deps.get_current_user)):
-    return db.query(Setting).order_by(Setting.key).all()
+    settings = db.query(Setting).order_by(Setting.key).all()
+    return [
+        SettingResponse(
+            key=setting.key,
+            value=_deserialize_setting_value(setting.key, setting.value),
+            updated_at=setting.updated_at,
+        )
+        for setting in settings
+    ]
 
 
 @router.post("/settings", response_model=list[SettingResponse])
 def save_settings(payload: SettingsPayload, db: Session = Depends(deps.get_db), _: dict = Depends(deps.get_current_user)):
+    alias_updated = False
     for key, value in payload.data.items():
         setting = db.get(Setting, key)
+        serialized = _serialize_setting_value(key, value)
         if setting:
-            setting.value = value
+            setting.value = serialized
             setting.updated_at = utc_now()
         else:
-            db.add(Setting(key=key, value=value, updated_at=utc_now()))
+            db.add(Setting(key=key, value=serialized, updated_at=utc_now()))
+        if key == QUOTE_ALIAS_SETTING_KEY:
+            alias_updated = True
     db.commit()
-    return db.query(Setting).order_by(Setting.key).all()
+    if alias_updated:
+        clear_quote_alias_cache()
+    settings = db.query(Setting).order_by(Setting.key).all()
+    return [
+        SettingResponse(
+            key=setting.key,
+            value=_deserialize_setting_value(setting.key, setting.value),
+            updated_at=setting.updated_at,
+        )
+        for setting in settings
+    ]
 
 
 @router.post("/api/binance")
