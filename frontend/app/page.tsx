@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
 
 import { api } from "@/lib/api";
+import { formatErrorDetail } from "@/lib/errors";
 import { isTokenValid, useAuthStore } from "@/lib/store";
 
 const COLORS = ["#1d4ed8", "#22c55e", "#f97316", "#6366f1"];
@@ -62,7 +63,7 @@ export default function DashboardPage() {
         setSummary(holdingsRes.data.summary);
         setSnapshots(pnlRes.data.points);
       } catch (err: any) {
-        setError(err.response?.data?.detail ?? "Erreur de chargement");
+        setError(formatErrorDetail(err.response?.data?.detail, "Erreur de chargement"));
       } finally {
         setLoading(false);
       }

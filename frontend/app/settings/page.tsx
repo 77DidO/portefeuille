@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { formatErrorDetail } from "@/lib/errors";
 import { isTokenValid, useAuthStore } from "@/lib/store";
 import { useRouter } from "next/navigation";
 
@@ -31,7 +32,7 @@ export default function SettingsPage() {
       });
       setStatus("Préférences enregistrées");
     } catch (err: any) {
-      setStatus(err.response?.data?.detail ?? "Erreur lors de la sauvegarde");
+      setStatus(formatErrorDetail(err.response?.data?.detail, "Erreur lors de la sauvegarde"));
     }
   }
 
@@ -41,7 +42,7 @@ export default function SettingsPage() {
       await api.post("/config/api/binance", { key: binanceKey, secret: binanceSecret });
       setStatus("Clés Binance sauvegardées");
     } catch (err: any) {
-      setStatus(err.response?.data?.detail ?? "Impossible d'enregistrer");
+      setStatus(formatErrorDetail(err.response?.data?.detail, "Impossible d'enregistrer"));
     }
   }
 

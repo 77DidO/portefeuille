@@ -4,6 +4,7 @@ import { useState } from "react";
 import axios from "axios";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/store";
+import { formatErrorDetail } from "@/lib/errors";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -23,7 +24,7 @@ export default function LoginPage() {
       setToken(data.access_token, data.expires_at);
       router.push("/");
     } catch (err: any) {
-      setError(err.response?.data?.detail ?? "Impossible de se connecter");
+      setError(formatErrorDetail(err.response?.data?.detail, "Impossible de se connecter"));
     } finally {
       setLoading(false);
     }
