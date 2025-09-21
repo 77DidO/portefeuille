@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api import deps
@@ -96,7 +96,6 @@ def get_holding_detail(
 
 @router.get("/pnl", response_model=PnLRangeResponse)
 def get_pnl(
-    range: str = Query("ALL", pattern="^(1M|3M|YTD|ALL)$"),
     db: Session = Depends(deps.get_db),
 ) -> PnLRangeResponse:
     query = db.query(Snapshot).order_by(Snapshot.ts.desc())
