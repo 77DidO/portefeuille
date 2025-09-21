@@ -109,3 +109,53 @@ def test_compute_holdings_handles_symbol_only_fiat_sell(tmp_path):
         assert totals["realized_pnl"] == pytest.approx(497.5)
     finally:
         db.close()
+
+
+def test_compute_holdings_respects_crypto_portfolio_type(tmp_path):
+    Session = setup_db(tmp_path)
+    db = Session()
+    try:
+        db.add_all(
+            [
+                Transaction(
+                    source="exchange",
+                    type_portefeuille="CRYPTO",
+                    operation="BUY",
+                    asset="Bitcoin",
+                    symbol_or_isin="BTC",
+                    quantity=0.5,
+                    unit_price_eur=20000.0,
+                    fee_eur=10.0,
+                    total_eur=10000.0,
+                    ts=datetime(2024, 3, 1, tzinfo=timezone.utc),
+                    notes="",
+                    external_ref="buy-btc",
+                ),
+                Transaction(
+                    source="exchange",
+                    type_portefeuille="PEA",
+                    operation="BUY",
+                    asset="Solana",
+                    symbol_or_isin="SOL",
+                    quantity=5.0,
+                    unit_price_eur=100.0,
+                    fee_eur=0.0,
+                    total_eur=500.0,
+                    ts=datetime(2024, 3, 2, tzinfo=timezone.utc),
+                    notes="",
+                    external_ref="buy-sol",
+                ),
+            ]
+        )
+        db.commit()
+
+        _cache.clear()
+        holdings, _ = compute_holdings(db)
+
+        crypto_assets = {h.asset for h in holdings if h.type_portefeuille == "CRYPTO"}
+        pea_assets = {h.asset for h in holdings if h.type_portefeuille == "PEA"}
+
+        assert crypto_assets == {"BTC"}
+        assert "SOL" in pea_assets
+    finally:
+        db.close()
