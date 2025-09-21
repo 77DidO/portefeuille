@@ -25,12 +25,29 @@ Commandes disponibles :
 '@
 }
 
+function Get-ScriptDirectory {
+    if ($PSScriptRoot) {
+        return $PSScriptRoot
+    }
+    if ($PSCommandPath) {
+        return Split-Path -Parent $PSCommandPath
+    }
+    if ($MyInvocation -and $MyInvocation.MyCommand) {
+        try {
+            return Split-Path -Parent $MyInvocation.MyCommand.Path
+        } catch {
+            # Ignored - we'll fall back to the current location below.
+        }
+    }
+    return (Get-Location).ProviderPath
+}
+
 function Resolve-RepoPath {
     param(
         [string]$RelativePath = ''
     )
 
-    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+    $scriptDir = Get-ScriptDirectory
     $rootPath = Convert-Path (Join-Path $scriptDir '..')
 
     if ([string]::IsNullOrWhiteSpace($RelativePath)) {
