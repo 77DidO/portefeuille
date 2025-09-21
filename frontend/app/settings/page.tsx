@@ -15,6 +15,7 @@ export default function SettingsPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [binanceConfigured, setBinanceConfigured] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [wiping, setWiping] = useState(false);
 
   useEffect(() => {
     async function loadSettings() {
@@ -55,6 +56,22 @@ export default function SettingsPage() {
       setStatus("Clés Binance sauvegardées");
     } catch (err: any) {
       setStatus(formatErrorDetail(err.response?.data?.detail, "Impossible d'enregistrer"));
+    }
+  }
+
+  async function handleWipeData() {
+    if (!window.confirm("Voulez-vous vraiment supprimer toutes les données importées ?")) {
+      return;
+    }
+    try {
+      setWiping(true);
+      setStatus(null);
+      await api.post("/config/wipe");
+      setStatus("Toutes les données ont été supprimées");
+    } catch (err: any) {
+      setStatus(formatErrorDetail(err.response?.data?.detail, "Suppression impossible"));
+    } finally {
+      setWiping(false);
     }
   }
 
@@ -114,6 +131,21 @@ export default function SettingsPage() {
             Sauvegarder
           </button>
         </form>
+      </section>
+
+      <section className="space-y-4 rounded-xl bg-white p-6 shadow">
+        <h2 className="text-lg font-semibold text-slate-700">Zone sensible</h2>
+        <p className="text-sm text-slate-500">
+          Supprime toutes les transactions, snapshots et journaux importés. Cette action est irréversible.
+        </p>
+        <button
+          type="button"
+          onClick={handleWipeData}
+          disabled={wiping}
+          className="w-full rounded bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300 md:w-auto"
+        >
+          {wiping ? "Suppression…" : "Vider toutes les données"}
+        </button>
       </section>
     </AppShell>
   );
