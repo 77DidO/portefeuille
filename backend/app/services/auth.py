@@ -26,7 +26,13 @@ def _store_password_hash(db: Session, hashed_password: str) -> str:
         setting.value = hashed_password
         setting.updated_at = utc_now()
     else:
-        db.add(Setting(key=PASSWORD_KEY, value=hashed_password, updated_at=utc_now()))
+        db.add(
+            Setting(
+                key=PASSWORD_KEY,
+                value=hashed_password,
+                updated_at=utc_now(),
+            )
+        )
     db.commit()
     return hashed_password
 
