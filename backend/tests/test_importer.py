@@ -34,7 +34,7 @@ def make_zip(content: str) -> bytes:
 
 
 def test_import_success(db_session):
-    csv_content = """source,type_portefeuille,operation,asset,symbol_or_isin,quantity,unit_price_eur,fee_eur,total_eur,ts\n"
+    csv_content = "source,type_portefeuille,operation,asset,symbol_or_isin,quantity,unit_price_eur,fee_eur,total_eur,ts\n"
     csv_content += "binance,CRYPTO,BUY,Bitcoin,BTC,0.1,30000,10,3000,2024-01-01T00:00:00Z\n"
     importer = Importer(db_session)
     importer.import_zip(make_zip(csv_content))
@@ -42,7 +42,27 @@ def test_import_success(db_session):
 
 
 def test_import_missing_column(db_session):
-    csv_content = """source,type_portefeuille,asset,symbol_or_isin,quantity,unit_price_eur,fee_eur,total_eur,ts\n"""
+    csv_content = "source,type_portefeuille,asset,symbol_or_isin,quantity,unit_price_eur,fee_eur,total_eur,ts\n"
     importer = Importer(db_session)
     with pytest.raises(ImportErrorDetail):
         importer.import_zip(make_zip(csv_content))
+
+
+def test_import_updates_existing_transaction(db_session):
+    csv_content = "source,type_portefeuille,operation,asset,symbol_or_isin,quantity,unit_price_eur,fee_eur,total_eur,ts,notes,external_ref\n"
+    csv_content += "binance,CRYPTO,BUY,Bitcoin,BTC,0.1,30000,10,3000,2024-01-01T00:00:00Z,Initial import,tx-1\n"
+
+    importer = Importer(db_session)
+    importer.import_zip(make_zip(csv_content))
+
+    updated_csv = "source,type_portefeuille,operation,asset,symbol_or_isin,quantity,unit_price_eur,fee_eur,total_eur,ts,notes,external_ref\n"
+    updated_csv += "binance,CRYPTO,BUY,Bitcoin,BTC,0.2,31000,5,6200,2024-01-02T00:00:00Z,Updated import,tx-1\n"
+
+    importer.import_zip(make_zip(updated_csv))
+
+    tx = db_session.query(Transaction).one()
+    assert tx.quantity == 0.2
+    assert tx.unit_price_eur == 31000
+    assert tx.fee_eur == 5
+    assert tx.total_eur == 6200
+    assert tx.notes == "Updated import"

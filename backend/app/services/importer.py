@@ -52,21 +52,33 @@ class Importer:
 
         for idx, row in enumerate(reader, start=2):
             try:
-                tx = Transaction(
-                    source=row["source"],
-                    type_portefeuille=row["type_portefeuille"],
-                    operation=row["operation"],
-                    asset=row["asset"],
-                    symbol_or_isin=row.get("symbol_or_isin"),
-                    quantity=float(row["quantity"]),
-                    unit_price_eur=float(row["unit_price_eur"]),
-                    fee_eur=float(row["fee_eur"] or 0.0),
-                    total_eur=float(row["total_eur"]),
-                    ts=to_utc(datetime.fromisoformat(row["ts"].replace("Z", "+00:00"))),
-                    notes=row.get("notes"),
-                    external_ref=row.get("external_ref") or f"import_{row.get('source')}_{row.get('ts')}_{idx}",
-                )
+                external_ref = row.get("external_ref") or f"import_{row.get('source')}_{row.get('ts')}_{idx}"
+                data = {
+                    "source": row["source"],
+                    "type_portefeuille": row["type_portefeuille"],
+                    "operation": row["operation"],
+                    "asset": row["asset"],
+                    "symbol_or_isin": row.get("symbol_or_isin") or None,
+                    "quantity": float(row["quantity"]),
+                    "unit_price_eur": float(row["unit_price_eur"]),
+                    "fee_eur": float(row["fee_eur"] or 0.0),
+                    "total_eur": float(row["total_eur"]),
+                    "ts": to_utc(datetime.fromisoformat(row["ts"].replace("Z", "+00:00"))),
+                    "notes": row.get("notes") or None,
+                    "external_ref": external_ref,
+                }
             except Exception as exc:  # noqa: BLE001
                 raise ImportErrorDetail(str(exc), row_number=idx) from exc
-            self.db.add(tx)
+
+            existing = (
+                self.db.query(Transaction)
+                .filter(Transaction.external_ref == external_ref)
+                .one_or_none()
+            )
+
+            if existing:
+                for field, value in data.items():
+                    setattr(existing, field, value)
+            else:
+                self.db.add(Transaction(**data))
         self.db.commit()
