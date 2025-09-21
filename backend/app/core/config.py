@@ -5,7 +5,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseSettings, Field, validator
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -33,11 +34,9 @@ class Settings(BaseSettings):
     log_level: str = Field("INFO", env="LOG_LEVEL")
     demo_seed: bool = Field(True, env="DEMO_SEED")
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
 
-    @validator("database_url")
+    @field_validator("database_url", mode="before")
     def expand_sqlite_path(cls, v: str) -> str:
         if v.startswith("sqlite") and "///" in v and not v.startswith("sqlite:////"):
             path = v.split("///", 1)[1]
