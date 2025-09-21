@@ -66,3 +66,17 @@ def test_import_updates_existing_transaction(db_session):
     assert tx.fee_eur == 5
     assert tx.total_eur == 6200
     assert tx.notes == "Updated import"
+
+
+def test_import_error_reports_row_number(db_session):
+    csv_content = (
+        "source,type_portefeuille,operation,asset,symbol_or_isin,quantity,unit_price_eur,fee_eur,total_eur,ts\n"
+        "binance,CRYPTO,BUY,Bitcoin,BTC,not-a-number,30000,10,3000,2024-01-01T00:00:00Z\n"
+    )
+    importer = Importer(db_session)
+
+    with pytest.raises(ImportErrorDetail) as exc_info:
+        importer.import_zip(make_zip(csv_content))
+
+    assert exc_info.value.row_number == 2
+    assert "ligne 2" in exc_info.value.detailed_message

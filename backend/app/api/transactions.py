@@ -28,7 +28,10 @@ def import_transactions(
     try:
         importer.import_zip(file.file.read())
     except ImportErrorDetail as exc:
-        raise HTTPException(status_code=400, detail=f"Import invalide: {exc}") from exc
+        detail: dict[str, object] = {"message": exc.detailed_message}
+        if exc.row_number is not None:
+            detail["row_number"] = exc.row_number
+        raise HTTPException(status_code=400, detail=detail) from exc
     from app.services.portfolio import compute_holdings
 
     compute_holdings.cache_clear()  # invalidate cache after import

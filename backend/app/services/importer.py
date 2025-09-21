@@ -31,6 +31,24 @@ class ImportErrorDetail(Exception):
     def __init__(self, message: str, row_number: int | None = None) -> None:
         super().__init__(message)
         self.row_number = row_number
+        self._message = message
+
+    @property
+    def message(self) -> str:
+        """Return the base error message without row metadata."""
+
+        return self._message
+
+    @property
+    def detailed_message(self) -> str:
+        """Return an error message including the row number when available."""
+
+        if self.row_number is None:
+            return self._message
+        return f"{self._message} (ligne {self.row_number})"
+
+    def __str__(self) -> str:  # pragma: no cover - delegated to detailed_message
+        return self.detailed_message
 
 
 class Importer:
