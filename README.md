@@ -4,6 +4,33 @@ Application mono-utilisateur pour suivre un portefeuille PEA et Crypto (Binance)
 
 ## Démarrage rapide
 
+### Avec le script utilitaire (Windows PowerShell)
+
+> Prérequis : `python3`, `npm` et (facultatif) `docker`/`docker-compose` doivent être disponibles sur votre machine et accessibles depuis PowerShell.
+
+```powershell
+# Installation des dépendances backend et frontend
+./scripts/setup.ps1 install
+
+# Lancement du backend FastAPI
+./scripts/setup.ps1 backend
+
+# Lancement du frontend Next.js
+./scripts/setup.ps1 frontend
+```
+
+Autres commandes utiles :
+
+```powershell
+# Exécuter les tests backend
+./scripts/setup.ps1 test
+
+# Démarrer l'application via Docker
+./scripts/setup.ps1 docker
+```
+
+### Installation manuelle
+
 ```bash
 cp .env.example .env
 python -m venv .venv && source .venv/bin/activate
