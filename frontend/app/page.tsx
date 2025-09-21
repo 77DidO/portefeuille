@@ -195,8 +195,12 @@ export default function DashboardPage() {
                     <Td>{formatCurrency(holding.pru_eur)}</Td>
                     <Td>{formatCurrency(holding.market_price_eur)}</Td>
                     <Td>{formatCurrency(holding.market_value_eur)}</Td>
-                    <Td className={holding.pl_eur >= 0 ? "text-emerald-600" : "text-red-600"}>{formatCurrency(holding.pl_eur)}</Td>
-                    <Td className={holding.pl_pct >= 0 ? "text-emerald-600" : "text-red-600"}>{holding.pl_pct.toFixed(2)}%</Td>
+                    <Td className={holding.pl_eur >= 0 ? "text-emerald-600" : "text-red-600"}>
+                      <TrendValue value={holding.pl_eur} formatted={formatCurrency(holding.pl_eur)} />
+                    </Td>
+                    <Td className={holding.pl_pct >= 0 ? "text-emerald-600" : "text-red-600"}>
+                      <TrendValue value={holding.pl_pct} formatted={`${holding.pl_pct.toFixed(2)}%`} />
+                    </Td>
                   </tr>
                 ))}
               </tbody>
@@ -215,6 +219,19 @@ function Card({ title, value, subtitle }: { title: string; value: string; subtit
       <p className="mt-2 text-2xl font-semibold text-slate-800">{value}</p>
       <p className="text-xs text-slate-400">{subtitle}</p>
     </div>
+  );
+}
+
+function TrendValue({ value, formatted }: { value: number; formatted: string }) {
+  const isPositive = value >= 0;
+  const icon = isPositive ? "▲" : "▼";
+
+  return (
+    <span className="inline-flex items-center gap-1 font-medium">
+      <span aria-hidden="true">{icon}</span>
+      <span className="sr-only">{isPositive ? "Hausse" : "Baisse"} : </span>
+      <span>{formatted}</span>
+    </span>
   );
 }
 
