@@ -4,11 +4,9 @@ import { useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { api } from "@/lib/api";
-import { useRequireAuth } from "@/lib/auth";
 import { formatErrorDetail } from "@/lib/errors";
 
 export default function ExportPage() {
-  useRequireAuth();
   const [downloading, setDownloading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +72,7 @@ export default function ExportPage() {
               Après une restauration, ré-importez l’archive via l’API <code>/transactions/import</code> puis relancez un snapshot pour
               recalculer les positions.
             </li>
-            <li>Automatisez les exports réguliers grâce à une tâche cron qui appelle cet endpoint authentifié.</li>
+            <li>Automatisez les exports réguliers grâce à une tâche cron qui appelle directement cet endpoint.</li>
           </ul>
         </section>
       </div>

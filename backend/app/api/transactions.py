@@ -16,7 +16,7 @@ router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 
 @router.get("/", response_model=list[TransactionResponse])
-def list_transactions(db: Session = Depends(deps.get_db), _: dict = Depends(deps.get_current_user)):
+def list_transactions(db: Session = Depends(deps.get_db)):
     return db.query(Transaction).order_by(Transaction.ts.desc()).limit(500).all()
 
 
@@ -24,7 +24,6 @@ def list_transactions(db: Session = Depends(deps.get_db), _: dict = Depends(deps
 def import_transactions(
     file: UploadFile = File(...),
     db: Session = Depends(deps.get_db),
-    _: dict = Depends(deps.get_current_user),
 ) -> dict:
     filename = (file.filename or "").lower()
     if not filename.endswith((".zip", ".csv")):
@@ -53,7 +52,6 @@ def update_transaction(
     transaction_id: int,
     payload: TransactionUpdate,
     db: Session = Depends(deps.get_db),
-    _: dict = Depends(deps.get_current_user),
 ) -> Transaction:
     transaction = db.get(Transaction, transaction_id)
     if transaction is None:
@@ -77,7 +75,6 @@ def update_transaction(
 def delete_transaction(
     transaction_id: int,
     db: Session = Depends(deps.get_db),
-    _: dict = Depends(deps.get_current_user),
 ) -> TransactionDeleteResponse:
     transaction = db.get(Transaction, transaction_id)
     if transaction is None:

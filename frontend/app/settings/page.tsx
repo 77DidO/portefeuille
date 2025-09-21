@@ -4,11 +4,9 @@ import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { api } from "@/lib/api";
-import { useRequireAuth } from "@/lib/auth";
 import { formatErrorDetail } from "@/lib/errors";
 
 export default function SettingsPage() {
-  useRequireAuth();
   const [binanceKey, setBinanceKey] = useState("");
   const [binanceSecret, setBinanceSecret] = useState("");
   const [snapshotTime, setSnapshotTime] = useState("18:00");

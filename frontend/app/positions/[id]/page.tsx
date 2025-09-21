@@ -7,7 +7,6 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 
 import { AppShell } from "@/components/AppShell";
 import { api } from "@/lib/api";
-import { useRequireAuth } from "@/lib/auth";
 import { formatCurrency, formatDate, formatDateTime, formatNumber, formatPercentage } from "@/lib/format";
 import { formatErrorDetail } from "@/lib/errors";
 
@@ -51,7 +50,6 @@ export default function PositionDetailPage() {
   const identifier = Array.isArray(rawId) ? rawId[0] : rawId ?? "";
   const decodedId = decodeURIComponent(identifier);
 
-  const { token, expiresAt } = useRequireAuth();
   const [detail, setDetail] = useState<HoldingDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +84,7 @@ export default function PositionDetailPage() {
     return () => {
       active = false;
     };
-  }, [decodedId, token, expiresAt]);
+  }, [decodedId]);
 
   const historyData = useMemo<HistoryPointWithMeta[]>(() => {
     if (!detail?.history?.length) {

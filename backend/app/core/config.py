@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 import os
 from functools import lru_cache
 from pathlib import Path
@@ -15,11 +14,6 @@ class Settings(BaseSettings):
     tz: str = Field("Europe/Paris", env="TZ")
 
     app_secret: str = Field("change_me", env="APP_SECRET")
-    jwt_secret: str = Field("change_me_jwt", env="JWT_SECRET")
-    jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 12 * 60
-
-    password_hash: str = Field("", env="PASSWORD_HASH")
 
     binance_api_key: str = Field("", env="BINANCE_API_KEY")
     binance_api_secret: str = Field("", env="BINANCE_API_SECRET")

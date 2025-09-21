@@ -13,12 +13,10 @@ import {
 
 import { AppShell } from "@/components/AppShell";
 import { api } from "@/lib/api";
-import { useRequireAuth } from "@/lib/auth";
 import { formatCurrency, formatDateTime, formatNumber } from "@/lib/format";
 import { formatErrorDetail } from "@/lib/errors";
 
 export default function TransactionsPage() {
-  useRequireAuth();
   const [transactions, setTransactions] = useState<TransactionResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api import deps
@@ -23,7 +23,7 @@ router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 
 
 @router.get("/holdings", response_model=HoldingsResponse)
-def get_holdings(db: Session = Depends(deps.get_db), _: dict = Depends(deps.get_current_user)) -> HoldingsResponse:
+def get_holdings(db: Session = Depends(deps.get_db)) -> HoldingsResponse:
     holdings_raw, totals = compute_holdings(db)
     holdings = [
         HoldingResponse(
@@ -56,7 +56,6 @@ def get_holdings(db: Session = Depends(deps.get_db), _: dict = Depends(deps.get_
 def get_holding_detail(
     identifier: str,
     db: Session = Depends(deps.get_db),
-    _: dict = Depends(deps.get_current_user),
 ) -> HoldingDetailResponse:
     try:
         detail = compute_holding_detail(db, identifier)
@@ -97,9 +96,7 @@ def get_holding_detail(
 
 @router.get("/pnl", response_model=PnLRangeResponse)
 def get_pnl(
-    range: str = Query("ALL", pattern="^(1M|3M|YTD|ALL)$"),
     db: Session = Depends(deps.get_db),
-    _: dict = Depends(deps.get_current_user),
 ) -> PnLRangeResponse:
     query = db.query(Snapshot).order_by(Snapshot.ts.desc())
     points = [

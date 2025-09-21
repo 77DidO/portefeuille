@@ -82,7 +82,7 @@ pytest
 ```
 
 ## Fonctionnalités principales
-- Authentification JWT mono-utilisateur
+- Accès direct mono-utilisateur (aucune authentification)
 - Calcul FIFO des positions et P&L
 - Import/export CSV & ZIP
 - Snapshots quotidiens planifiés (APScheduler)
