@@ -21,6 +21,11 @@ PASSWORD_KEY = "password_hash"
 
 
 def _store_password_hash(db: Session, hashed_password: str) -> str:
+    setting = db.get(Setting, PASSWORD_KEY)
+    if setting:
+        setting.value = hashed_password
+        setting.updated_at = utc_now()
+    else:
     db.add(Setting(key=PASSWORD_KEY, value=hashed_password, updated_at=utc_now()))
     db.commit()
     return hashed_password
@@ -50,7 +55,9 @@ def _default_password_hash(db: Session) -> str:
 def _load_password_hash(db: Session) -> str:
     setting = db.get(Setting, PASSWORD_KEY)
     if setting:
-        return setting.value or ""
+        stored_hash = setting.value or ""
+        if _is_valid_hash(stored_hash):
+            return stored_hash
 
     configured_hash = settings.password_hash
     if configured_hash and _is_valid_hash(configured_hash):
