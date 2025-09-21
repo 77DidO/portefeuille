@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 
 import pytest
 from sqlalchemy import create_engine
@@ -8,9 +9,16 @@ from sqlalchemy.orm import sessionmaker
 
 from app.models.base import Base
 from app.models.transactions import Transaction
+from app.models.settings import Setting
 import httpx
 
-from app.services.portfolio import _cache, _price_cache, compute_holdings
+from app.services.portfolio import (
+    _cache,
+    _price_cache,
+    clear_quote_alias_cache,
+    compute_holdings,
+)
+from app.utils.settings_keys import QUOTE_ALIAS_SETTING_KEY
 
 
 def setup_db(tmp_path):
@@ -171,6 +179,72 @@ def test_compute_holdings_respects_crypto_portfolio_type(tmp_path, monkeypatch):
 
         assert crypto_assets == {"BTC"}
         assert "SOL" in pea_assets
+    finally:
+        db.close()
+
+
+def test_compute_holdings_resolves_isin_alias(tmp_path, monkeypatch):
+    Session = setup_db(tmp_path)
+    db = Session()
+    try:
+        isin = "FR0000120073"
+        alias = {isin: "AIR.PA"}
+        db.add(
+            Setting(
+                key=QUOTE_ALIAS_SETTING_KEY,
+                value=json.dumps(alias),
+                updated_at=datetime(2024, 5, 1, tzinfo=timezone.utc),
+            )
+        )
+        db.add(
+            Transaction(
+                source="broker",
+                type_portefeuille="PEA",
+                operation="BUY",
+                asset="Air Liquide",
+                symbol_or_isin=isin,
+                quantity=4.0,
+                unit_price_eur=100.0,
+                fee_eur=0.0,
+                total_eur=400.0,
+                ts=datetime(2024, 4, 15, tzinfo=timezone.utc),
+                notes="",
+                external_ref="buy-air-liquide",
+            )
+        )
+        db.commit()
+
+        monkeypatch.setattr("app.services.portfolio.SessionLocal", Session)
+
+        def fake_http_get(self, url, params):
+            assert params.get("symbols") == "AIR.PA"
+
+            class DummyResponse:
+                def raise_for_status(self_inner):
+                    return None
+
+                def json(self_inner):
+                    return {
+                        "quoteResponse": {
+                            "result": [
+                                {
+                                    "regularMarketPrice": 180.5,
+                                }
+                            ]
+                        }
+                    }
+
+            return DummyResponse()
+
+        monkeypatch.setattr(httpx.Client, "get", fake_http_get, raising=False)
+
+        _cache.clear()
+        _price_cache.clear()
+        clear_quote_alias_cache()
+        holdings, _ = compute_holdings(db)
+
+        assert holdings[0].market_price_eur == pytest.approx(180.5)
+        assert holdings[0].market_price_eur != pytest.approx(holdings[0].pru_eur)
     finally:
         db.close()
 
