@@ -69,12 +69,13 @@ export default function DashboardPage() {
     const groups: Record<string, number> = {
       "BTC & ETH": 0,
       Alts: 0,
-      Cash: 0,
-      PEA: 0
+      Cash: 0
     };
+
     holdings.forEach((h) => {
       if (h.type_portefeuille === "CRYPTO") {
-        if (["BTC", "ETH"].includes(h.symbol_or_isin ?? h.asset)) {
+        const symbol = (h.symbol_or_isin ?? h.asset).toUpperCase();
+        if (symbol === "BTC" || symbol === "ETH") {
           groups["BTC & ETH"] += h.market_value_eur;
         } else {
           groups.Alts += h.market_value_eur;
@@ -82,9 +83,14 @@ export default function DashboardPage() {
       } else if (h.asset.toUpperCase() === "EUR") {
         groups.Cash += h.market_value_eur;
       } else {
-        groups.PEA += h.market_value_eur;
+        const key = h.type_portefeuille.toUpperCase();
+        if (!(key in groups)) {
+          groups[key] = 0;
+        }
+        groups[key] += h.market_value_eur;
       }
     });
+
     return Object.entries(groups)
       .filter(([, value]) => value > 0)
       .map(([name, value]) => ({ name, value }));
