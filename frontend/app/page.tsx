@@ -72,23 +72,24 @@ export default function DashboardPage() {
       Cash: 0
     };
 
-    holdings.forEach((h) => {
-      if (h.type_portefeuille === "CRYPTO") {
-        const symbol = (h.symbol_or_isin ?? h.asset).toUpperCase();
+    holdings.forEach((holding) => {
+      if (holding.type_portefeuille === "CRYPTO") {
+        const symbol = (holding.symbol_or_isin ?? holding.asset).toUpperCase();
         if (symbol === "BTC" || symbol === "ETH") {
-          groups["BTC & ETH"] += h.market_value_eur;
+          groups["BTC & ETH"] += holding.market_value_eur;
         } else {
-          groups.Alts += h.market_value_eur;
+          groups.Alts += holding.market_value_eur;
         }
-      } else if (h.asset.toUpperCase() === "EUR") {
-        groups.Cash += h.market_value_eur;
-      } else {
-        const key = h.type_portefeuille.toUpperCase();
-        if (!(key in groups)) {
-          groups[key] = 0;
-        }
-        groups[key] += h.market_value_eur;
+        return;
       }
+
+      if (holding.asset.toUpperCase() === "EUR") {
+        groups.Cash += holding.market_value_eur;
+        return;
+      }
+
+      const key = holding.type_portefeuille.toUpperCase();
+      groups[key] = (groups[key] ?? 0) + holding.market_value_eur;
     });
 
     return Object.entries(groups)
