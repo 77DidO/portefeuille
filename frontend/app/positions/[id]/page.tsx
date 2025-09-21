@@ -198,7 +198,7 @@ export default function PositionDetailPage() {
                 </div>
               ) : (
                 <p className="text-sm text-slate-500">
-                  Aucun historique disponible pour cet actif pour le moment. L'historique apparaîtra après la prochaine prise d'instantané.
+                  Aucun historique disponible pour cet actif pour le moment. L&rsquo;historique apparaîtra après la prochaine prise d&rsquo;instantané.
                 </p>
               )}
             </section>

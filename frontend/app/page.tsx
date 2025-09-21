@@ -7,7 +7,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAx
 import { AppShell } from "@/components/AppShell";
 import { api } from "@/lib/api";
 import { useRequireAuth } from "@/lib/auth";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatDateTime } from "@/lib/format";
 import { formatErrorDetail } from "@/lib/errors";
 
 const COLORS = ["#1d4ed8", "#22c55e", "#f97316", "#6366f1"];
@@ -23,6 +23,7 @@ type Holding = {
   pl_eur: number;
   pl_pct: number;
   type_portefeuille: string;
+  as_of: string | null;
 };
 
 type Summary = {
@@ -30,6 +31,15 @@ type Summary = {
   total_invested_eur: number;
   pnl_eur: number;
   pnl_pct: number;
+};
+
+type HoldingsApiResponse = {
+  holdings: Holding[];
+  summary: Summary;
+};
+
+type PnLResponse = {
+  points: SnapshotPoint[];
 };
 
 type SnapshotPoint = {
@@ -51,8 +61,8 @@ export default function DashboardPage() {
       try {
         setLoading(true);
         const [holdingsRes, pnlRes] = await Promise.all([
-          api.get("/portfolio/holdings"),
-          api.get("/portfolio/pnl")
+          api.get<HoldingsApiResponse>("/portfolio/holdings"),
+          api.get<PnLResponse>("/portfolio/pnl")
         ]);
         setHoldings(holdingsRes.data.holdings);
         setSummary(holdingsRes.data.summary);
@@ -97,6 +107,29 @@ export default function DashboardPage() {
       .filter(([, value]) => value > 0)
       .map(([name, value]) => ({ name, value }));
   }, [holdings]);
+
+  const lastUpdatedAt = useMemo(() => {
+    let latest: string | null = null;
+    let latestTimestamp = -Infinity;
+
+    holdings.forEach((holding) => {
+      if (!holding.as_of) {
+        return;
+      }
+      const ts = new Date(holding.as_of).getTime();
+      if (Number.isNaN(ts)) {
+        return;
+      }
+      if (ts > latestTimestamp) {
+        latestTimestamp = ts;
+        latest = holding.as_of;
+      }
+    });
+
+    return latest;
+  }, [holdings]);
+
+  const lastUpdatedLabel = lastUpdatedAt ? `Mise à jour ${formatDateTime(lastUpdatedAt)}` : "Date de mise à jour indisponible";
 
   return (
     <AppShell>
@@ -169,9 +202,12 @@ export default function DashboardPage() {
         </div>
 
         <section className="rounded-xl bg-white p-6 shadow">
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <h2 className="text-lg font-semibold text-slate-700">Positions</h2>
-            <div className="text-sm text-slate-400">{holdings.length} positions</div>
+            <div className="text-sm text-slate-400 sm:text-right">
+              <div>{holdings.length} positions</div>
+              <div className="text-xs">{lastUpdatedLabel}</div>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
