@@ -35,12 +35,12 @@ def upgrade() -> None:
 
     op.execute("UPDATE holdings SET type_portefeuille = 'PEA' WHERE type_portefeuille IS NULL")
 
-    op.alter_column(
-        "holdings",
-        "type_portefeuille",
-        existing_type=sa.String(length=16),
-        nullable=False,
-    )
+    with op.batch_alter_table("holdings") as batch_op:
+        batch_op.alter_column(
+            "type_portefeuille",
+            existing_type=sa.String(length=16),
+            nullable=False,
+        )
 
 
 def downgrade() -> None:

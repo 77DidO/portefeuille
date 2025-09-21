@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.models.base import Base  # noqa: F401
 from app.models import (  # noqa: F401
     account_settings,
     holdings,

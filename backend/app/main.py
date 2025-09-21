@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.api import auth, configuration, export, health, journal, portfolio, snapshots, transactions
 from app.core.config import settings
 from app.db import base  # noqa: F401
+from app.db.migration import run_migrations
 from app.db.session import SessionLocal
 from app.models.transactions import Transaction
 from app.utils.time import PARIS_TZ
@@ -32,10 +33,7 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event() -> None:
-    from app.models.base import Base
-    from app.db.session import engine
-
-    Base.metadata.create_all(bind=engine)
+    run_migrations()
     if not scheduler.running:
         scheduler.start()
         trigger = CronTrigger(hour=settings.snapshot_hour, minute=settings.snapshot_minute, timezone=PARIS_TZ)
