@@ -452,6 +452,7 @@ def compute_holding_detail(db: Session, identifier: str) -> HoldingDetailView:
         )
         for row in history_rows
     ]
+    history_by_ts = {point.ts: point for point in history}
 
     tx_query = (
         db.query(Transaction)
@@ -471,14 +472,33 @@ def compute_holding_detail(db: Session, identifier: str) -> HoldingDetailView:
     fifo_key = _make_portfolio_key(holding.type_portefeuille, holding.symbol_or_isin or holding.asset, holding.account_id)
     for tx in tx_rows:
         operation = (tx.operation or "").upper()
+        position_changed = False
         if operation == "BUY":
             fifo.buy(fifo_key, tx.quantity, tx.total_eur + tx.fee_eur)
+            position_changed = abs(tx.quantity) > 1e-12
         elif operation == "SELL":
             fifo.sell(fifo_key, tx.quantity, tx.total_eur, fee_eur=tx.fee_eur)
+            position_changed = abs(tx.quantity) > 1e-12
         elif operation == "DIVIDEND":
             fifo.dividend(fifo_key, tx.total_eur - tx.fee_eur)
         else:
             fifo.dividend(fifo_key, tx.total_eur)
+
+        if position_changed and tx.ts not in history_by_ts:
+            qty, cost_basis = fifo.current_position(fifo_key)
+            market_price = holding.market_price_eur
+            market_value = market_price * qty
+            pl_eur = market_value - cost_basis
+            pl_pct = (pl_eur / cost_basis * 100.0) if cost_basis else 0.0
+            history_by_ts[tx.ts] = HoldingHistoryPointView(
+                ts=tx.ts,
+                quantity=qty,
+                invested_eur=cost_basis,
+                market_price_eur=market_price,
+                market_value_eur=market_value,
+                pl_eur=pl_eur,
+                pl_pct=pl_pct,
+            )
 
     state = fifo.as_dict().get(fifo_key)
     realized = state.realized_pnl if state else 0.0
@@ -487,6 +507,8 @@ def compute_holding_detail(db: Session, identifier: str) -> HoldingDetailView:
         for tx in tx_rows
         if (tx.operation or "").upper() == "DIVIDEND"
     )
+
+    history = sorted(history_by_ts.values(), key=lambda point: point.ts)
 
     return HoldingDetailView(
         identifier=holding.identifier,
