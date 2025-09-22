@@ -12,7 +12,7 @@ from app.utils.time import utc_now
 
 
 def run_snapshot(db: Session) -> Snapshot:
-    record_log(db, "INFO", "snapshots", "Recomputation started")
+    record_log(db, "INFO", "snapshots", "Snapshot recomputation started")
     compute_holdings.cache_clear()
     holdings, totals = compute_holdings(db)
     ts = utc_now()
@@ -54,13 +54,15 @@ def run_snapshot(db: Session) -> Snapshot:
         db,
         "INFO",
         "snapshots",
-        "Snapshot updated",
+        "Snapshot recomputation completed",
         meta={
-            "snapshot_id": snapshot.id,
-            "value_pea_eur": value_pea,
-            "value_crypto_eur": value_crypto,
-            "value_total_eur": value_total,
-            "pnl_total_eur": pnl_total,
+            "snapshot": {
+                "id": snapshot.id,
+                "value_pea_eur": value_pea,
+                "value_crypto_eur": value_crypto,
+                "value_total_eur": value_total,
+                "pnl_total_eur": pnl_total,
+            }
         },
     )
     return snapshot
