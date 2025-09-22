@@ -55,6 +55,80 @@ def _clear_portfolio_caches():
     portfolio.compute_holdings.cache_clear()
 
 
+def test_get_market_price_uses_euronext_lookup(monkeypatch):
+    _clear_portfolio_caches()
+    portfolio.clear_quote_alias_cache()
+
+    search_calls: list[str] = []
+
+    def fake_search(isin: str) -> str | None:
+        search_calls.append(isin)
+        return None
+
+    lookup_calls: list[str] = []
+
+    def fake_lookup(isin: str) -> tuple[str, str]:
+        lookup_calls.append(isin)
+        return "MC", "XPAR"
+
+    fetch_calls: list[str] = []
+
+    def fake_fetch(issue: str) -> float:
+        fetch_calls.append(issue)
+        assert issue == "MC-FR0000123456-XPAR"
+        return 123.45
+
+    def fail_yahoo(symbol: str) -> float:
+        raise AssertionError("Yahoo lookup should not be used when Euronext lookup succeeds")
+
+    monkeypatch.setattr(portfolio, "_search_symbol_for_isin", fake_search)
+    monkeypatch.setattr(portfolio.euronext, "lookup_instrument_by_isin", fake_lookup)
+    monkeypatch.setattr(portfolio.euronext, "fetch_price", fake_fetch)
+    monkeypatch.setattr(portfolio, "_fetch_equity_price", fail_yahoo)
+
+    def fake_load_aliases() -> dict[str, str]:
+        try:
+            return portfolio._quote_alias_cache[portfolio._QUOTE_ALIAS_CACHE_KEY]
+        except KeyError:
+            return {}
+
+    monkeypatch.setattr(portfolio, "_load_quote_aliases", fake_load_aliases)
+
+    price = portfolio.get_market_price("FR0000123456", "PEA")
+
+    assert price == pytest.approx(123.45)
+    assert search_calls == ["FR0000123456"]
+    assert lookup_calls == ["FR0000123456"]
+    assert fetch_calls == ["MC-FR0000123456-XPAR"]
+
+    engine, db = _create_session()
+    try:
+        _add_transaction(
+            db,
+            account_id=None,
+            type_portefeuille="PEA",
+            operation="BUY",
+            symbol="FR0000123456",
+            quantity=2.0,
+            unit_price=100.0,
+            total=200.0,
+            ts=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            external_ref="buy",
+        )
+        db.commit()
+
+        holdings, _ = portfolio.compute_holdings(db)
+
+        assert len(holdings) == 1
+        holding = holdings[0]
+        assert holding.market_price_eur == pytest.approx(123.45)
+        assert holding.market_price_eur != pytest.approx(holding.invested_eur / holding.quantity)
+    finally:
+        db.close()
+        engine.dispose()
+        portfolio.clear_quote_alias_cache()
+
+
 def test_get_market_price_prefers_euronext(monkeypatch):
     _clear_portfolio_caches()
 

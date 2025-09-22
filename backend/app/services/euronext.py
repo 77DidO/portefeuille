@@ -6,10 +6,17 @@ from typing import Dict, Tuple
 import httpx
 from cachetools import TTLCache
 
-__all__ = ["EuronextAPIError", "fetch_price", "clear_cache"]
+__all__ = [
+    "EuronextAPIError",
+    "fetch_price",
+    "lookup_instrument_by_isin",
+    "clear_cache",
+]
 
 _API_URL = "https://live.euronext.com/en/ajax/getLiveData/issue"
 _CACHE: TTLCache[str, float] = TTLCache(maxsize=256, ttl=300)
+_LOOKUP_URL = "https://live.euronext.com/en/ajax/getListingByIsin"
+_LOOKUP_CACHE: TTLCache[str, Tuple[str, str]] = TTLCache(maxsize=256, ttl=300)
 _EURONEXT_MICS = {
     "XPAR",
     "XAMS",
@@ -21,6 +28,7 @@ _EURONEXT_MICS = {
 _ISSUE_REGEX = re.compile(
     r"^(?P<symbol>[A-Z0-9]+)-(?P<isin>[A-Z]{2}[A-Z0-9]{9}[0-9])-(?P<mic>X[A-Z0-9]{3})$"
 )
+_ISIN_REGEX = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
 
 
 class EuronextAPIError(RuntimeError):
@@ -29,6 +37,60 @@ class EuronextAPIError(RuntimeError):
 
 def _normalize(value: str | None) -> str:
     return (value or "").strip().upper()
+
+
+def _extract_lookup_candidates(payload: object) -> Tuple[Dict[str, object], ...]:
+    if isinstance(payload, dict):
+        for key in ("data", "results", "rows", "items"):
+            nested = payload.get(key)
+            if isinstance(nested, list):
+                return tuple(item for item in nested if isinstance(item, dict))
+        return (payload,)
+    if isinstance(payload, list):
+        return tuple(item for item in payload if isinstance(item, dict))
+    return tuple()
+
+
+def lookup_instrument_by_isin(isin: str) -> Tuple[str, str]:
+    normalized = _normalize(isin)
+    if not normalized:
+        raise EuronextAPIError("Missing ISIN for Euronext lookup")
+    if not _ISIN_REGEX.match(normalized):
+        raise EuronextAPIError(f"Invalid ISIN '{isin}' for Euronext lookup")
+
+    try:
+        return _LOOKUP_CACHE[normalized]
+    except KeyError:
+        pass
+
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            response = client.get(_LOOKUP_URL, params={"isin": normalized})
+            response.raise_for_status()
+            payload = response.json()
+    except httpx.HTTPError as exc:
+        raise EuronextAPIError(f"Euronext lookup failed for '{normalized}'") from exc
+    except ValueError as exc:
+        raise EuronextAPIError("Invalid JSON received from Euronext lookup") from exc
+
+    for candidate in _extract_lookup_candidates(payload):
+        symbol = _normalize(candidate.get("symbol"))
+        if not symbol:
+            symbol = _normalize(candidate.get("mnemonic"))
+        mic = _normalize(candidate.get("mic"))
+        if not mic:
+            mic = _normalize(candidate.get("market"))
+        if not mic:
+            mic = _normalize(candidate.get("micCode"))
+        if symbol and mic:
+            if mic not in _EURONEXT_MICS:
+                mic = _normalize(candidate.get("isoMic"))
+            if mic in _EURONEXT_MICS:
+                result = (symbol, mic)
+                _LOOKUP_CACHE[normalized] = result
+                return result
+
+    raise EuronextAPIError(f"Euronext lookup returned no instrument for '{normalized}'")
 
 
 def _resolve_params(identifier: str) -> Tuple[Dict[str, str], str, Tuple[str, ...]]:
@@ -118,3 +180,4 @@ def clear_cache() -> None:
     """Clear the internal TTL cache (used in tests)."""
 
     _CACHE.clear()
+    _LOOKUP_CACHE.clear()
