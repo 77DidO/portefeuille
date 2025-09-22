@@ -301,7 +301,11 @@ def resolve_quote_symbol(symbol: str, type_portefeuille: str | None) -> str:
     if not symbol:
         return ""
 
-    normalized = symbol.strip().upper()
+    normalized_input = symbol.strip().upper()
+    if not normalized_input:
+        return ""
+
+    normalized = normalized_input
     match = _EURONEXT_COMBINED_PATTERN.match(normalized)
     if match:
         normalized = match.group("isin")
@@ -309,13 +313,56 @@ def resolve_quote_symbol(symbol: str, type_portefeuille: str | None) -> str:
         market_match = _EURONEXT_ISIN_MARKET_PATTERN.match(normalized)
         if market_match:
             normalized = market_match.group("isin")
+
     if (type_portefeuille or "").upper() == "CRYPTO":
         return normalized
 
-    if not _ISIN_REGEX.match(normalized):
-        return normalized
-
     aliases = _load_quote_aliases()
+    alias = aliases.get(normalized_input)
+    if alias:
+        return alias
+
+    if normalized != normalized_input:
+        alias = aliases.get(normalized)
+        if alias:
+            return alias
+
+    if not _ISIN_REGEX.match(normalized):
+        symbol_mic = _extract_symbol_mic(normalized_input)
+        if not symbol_mic and normalized != normalized_input:
+            symbol_mic = _extract_symbol_mic(normalized)
+
+        if symbol_mic:
+            base_symbol, mic = symbol_mic
+            try:
+                isin_value, resolved_mic = euronext.search_instrument_by_symbol(
+                    base_symbol, mic
+                )
+            except euronext.EuronextAPIError:
+                if mic:
+                    try:
+                        isin_value, resolved_mic = euronext.search_instrument_by_symbol(
+                            base_symbol, None
+                        )
+                    except euronext.EuronextAPIError:
+                        return normalized_input
+                    else:
+                        alias_value = f"{base_symbol}-{isin_value}-{resolved_mic}"
+                        updated_aliases = dict(aliases)
+                        updated_aliases[normalized_input] = alias_value
+                        updated_aliases[isin_value] = alias_value
+                        _quote_alias_cache[_QUOTE_ALIAS_CACHE_KEY] = updated_aliases
+                        return alias_value
+                return normalized_input
+            else:
+                alias_value = f"{base_symbol}-{isin_value}-{resolved_mic}"
+                updated_aliases = dict(aliases)
+                updated_aliases[normalized_input] = alias_value
+                updated_aliases[isin_value] = alias_value
+                _quote_alias_cache[_QUOTE_ALIAS_CACHE_KEY] = updated_aliases
+                return alias_value
+        return normalized_input
+
     alias = aliases.get(normalized)
     if alias:
         return alias
@@ -328,26 +375,18 @@ def resolve_quote_symbol(symbol: str, type_portefeuille: str | None) -> str:
         return fetched
 
     try:
-        symbol, mic = euronext.search_instrument_by_isin(normalized)
+        symbol_value, mic_value = euronext.search_instrument_by_isin(normalized)
     except euronext.EuronextAPIError:
         try:
-            symbol, mic = euronext.lookup_instrument_by_isin(normalized)
+            symbol_value, mic_value = euronext.lookup_instrument_by_isin(normalized)
         except euronext.EuronextAPIError:
-            pass
-        else:
-            alias_value = f"{symbol}-{normalized}-{mic}"
-            updated_aliases = dict(aliases)
-            updated_aliases[normalized] = alias_value
-            _quote_alias_cache[_QUOTE_ALIAS_CACHE_KEY] = updated_aliases
-            return alias_value
-    else:
-        alias_value = f"{symbol}-{normalized}-{mic}"
-        updated_aliases = dict(aliases)
-        updated_aliases[normalized] = alias_value
-        _quote_alias_cache[_QUOTE_ALIAS_CACHE_KEY] = updated_aliases
-        return alias_value
-
-    return normalized
+            return normalized
+    alias_value = f"{symbol_value}-{normalized}-{mic_value}"
+    updated_aliases = dict(aliases)
+    updated_aliases[normalized] = alias_value
+    updated_aliases[normalized_input] = alias_value
+    _quote_alias_cache[_QUOTE_ALIAS_CACHE_KEY] = updated_aliases
+    return alias_value
 
 
 def _normalize_mic(value: str | None) -> str | None:
@@ -405,6 +444,35 @@ def _iter_euronext_candidates(original: str, resolved: str) -> Tuple[str, ...]:
     symbol_mics: list[Tuple[str, str]] = []
     seen_symbol_mics: set[Tuple[str, str]] = set()
 
+    try:
+        aliases = _quote_alias_cache[_QUOTE_ALIAS_CACHE_KEY]
+    except KeyError:
+        try:
+            aliases = _load_quote_aliases()
+        except Exception:
+            aliases = {}
+
+    raw_candidates: list[str] = []
+    raw_seen: set[str] = set()
+
+    def append_candidate(value: str | None) -> None:
+        if not value:
+            return
+        normalized_value = value.strip()
+        if not normalized_value:
+            return
+        upper_value = normalized_value.upper()
+        if upper_value not in raw_seen:
+            raw_seen.add(upper_value)
+            raw_candidates.append(normalized_value)
+        alias_value = aliases.get(normalized_value.upper())
+        if alias_value and alias_value.upper() not in raw_seen:
+            raw_seen.add(alias_value.upper())
+            raw_candidates.append(alias_value)
+
+    append_candidate(original)
+    append_candidate(resolved)
+
     def add_issue(symbol: str, isin: str, mic: str) -> None:
         issue = _normalize_issue(symbol, isin, mic)
         if issue not in seen_issues:
@@ -423,7 +491,7 @@ def _iter_euronext_candidates(original: str, resolved: str) -> Tuple[str, ...]:
             seen_symbol_mics.add(key)
             symbol_mics.append(key)
 
-    for raw_candidate in (original, resolved):
+    for raw_candidate in raw_candidates:
         if not raw_candidate:
             continue
         normalized = raw_candidate.strip().upper()
