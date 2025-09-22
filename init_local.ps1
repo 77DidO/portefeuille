@@ -30,7 +30,7 @@ if (-not $env:NEXT_PUBLIC_API_BASE) {
 
 Write-Host 'Starting backend (uvicorn) and frontend (Next.js). Press Ctrl+C to stop both services.'
 
-$backendProcess = Start-Process -FilePath $pythonCmd -ArgumentList '-m','uvicorn','app.main:app','--reload','--port','8000' -WorkingDirectory (Join-Path $rootDir 'backend') -PassThru -NoNewWindow
+$backendProcess = Start-Process -FilePath $pythonCmd -ArgumentList '-m','uvicorn','app.main:app','--reload','--host','0.0.0.0','--port','8000' -WorkingDirectory (Join-Path $rootDir 'backend') -PassThru -NoNewWindow
 $isWindows = try {
     [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
 } catch {

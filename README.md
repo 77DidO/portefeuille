@@ -20,7 +20,7 @@ Un script Bash est fourni pour installer les dépendances et lancer les deux ser
 
 Le script crée un environnement virtuel Python local (`.venv`), installe les dépendances backend, exécute `npm install` dans `frontend/` puis lance :
 
-- Backend : `uvicorn app.main:app --reload --port 8000`
+- Backend : `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
 - Frontend : `NEXT_PUBLIC_API_BASE=http://localhost:8000 npm run dev`
 
 Appuyez sur `Ctrl+C` pour arrêter les deux services.
@@ -37,7 +37,7 @@ Set-ExecutionPolicy -Scope Process RemoteSigned
 
 Le script crée l'environnement virtuel Python (`.venv`), installe les dépendances, exécute `npm install` puis lance :
 
-- Backend : `uvicorn app.main:app --reload --port 8000`
+- Backend : `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
 - Frontend : `npm run dev` avec `NEXT_PUBLIC_API_BASE` défini par défaut sur `http://localhost:8000`
 
 Utilisez `Ctrl+C` pour stopper les deux services.
@@ -61,7 +61,7 @@ Utilisez `Ctrl+C` pour stopper les deux services.
 3. Lancer le backend FastAPI depuis le dossier `backend/` :
 
    ```bash
-   uvicorn app.main:app --reload --port 8000
+   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
    ```
 
 4. Installer et lancer le frontend Next.js :

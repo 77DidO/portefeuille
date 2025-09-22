@@ -35,7 +35,7 @@ cleanup() {
 trap cleanup INT TERM EXIT
 
 pushd "$ROOT_DIR/backend" >/dev/null
-uvicorn app.main:app --reload --port 8000 &
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 &
 BACKEND_PID=$!
 popd >/dev/null
 
