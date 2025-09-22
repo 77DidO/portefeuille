@@ -16,9 +16,18 @@ def run_snapshot(db: Session) -> Snapshot:
     compute_holdings.cache_clear()
     holdings, totals = compute_holdings(db)
     ts = utc_now()
-    value_crypto = sum(h.market_value_eur for h in holdings if h.type_portefeuille == "CRYPTO")
-    value_pea = sum(h.market_value_eur for h in holdings if h.type_portefeuille != "CRYPTO")
-    value_total = sum(h.market_value_eur for h in holdings)
+    value_crypto = sum(
+        h.market_value_eur for h in holdings if h.type_portefeuille == "CRYPTO"
+    )
+    value_pea = sum(
+        h.market_value_eur for h in holdings if h.type_portefeuille == "PEA"
+    )
+    value_other = sum(
+        h.market_value_eur
+        for h in holdings
+        if h.type_portefeuille not in {"PEA", "CRYPTO"}
+    )
+    value_total = value_pea + value_crypto + value_other
     pnl_total = totals["realized_pnl"] + totals["latent_pnl"]
 
     snapshot = Snapshot(
@@ -61,6 +70,7 @@ def run_snapshot(db: Session) -> Snapshot:
                 "value_pea_eur": value_pea,
                 "value_crypto_eur": value_crypto,
                 "value_total_eur": value_total,
+                "value_other_eur": value_other,
                 "pnl_total_eur": pnl_total,
             }
         },
