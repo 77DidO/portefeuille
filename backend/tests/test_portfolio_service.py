@@ -211,6 +211,45 @@ def test_get_market_price_uses_euronext_search(monkeypatch):
         portfolio.clear_quote_alias_cache()
 
 
+def test_get_market_price_uses_euronext_symbol_lookup(monkeypatch):
+    _clear_portfolio_caches()
+    portfolio.clear_quote_alias_cache()
+
+    search_calls: list[tuple[str, str | None]] = []
+
+    def fake_symbol_search(symbol: str, mic: str | None) -> tuple[str, str]:
+        search_calls.append((symbol, mic))
+        return "FR0000123456", "XPAR"
+
+    fetch_calls: list[str] = []
+
+    def fake_fetch(issue: str) -> float:
+        fetch_calls.append(issue)
+        assert issue == "MC-FR0000123456-XPAR"
+        return 654.32
+
+    def fail_equity(symbol: str) -> float:
+        raise AssertionError("Equity fallback should not be used when Euronext symbol search succeeds")
+
+    monkeypatch.setattr(portfolio.euronext, "search_instrument_by_symbol", fake_symbol_search)
+    monkeypatch.setattr(portfolio.euronext, "fetch_price", fake_fetch)
+    monkeypatch.setattr(portfolio, "_fetch_equity_price", fail_equity)
+
+    def fake_load_aliases() -> dict[str, str]:
+        try:
+            return portfolio._quote_alias_cache[portfolio._QUOTE_ALIAS_CACHE_KEY]
+        except KeyError:
+            return {}
+
+    monkeypatch.setattr(portfolio, "_load_quote_aliases", fake_load_aliases)
+
+    price = portfolio.get_market_price("MC.PA", "PEA")
+
+    assert price == pytest.approx(654.32)
+    assert search_calls == [("MC", "XPAR")]
+    assert fetch_calls == ["MC-FR0000123456-XPAR"]
+
+
 def test_get_market_price_prefers_euronext(monkeypatch):
     _clear_portfolio_caches()
 
