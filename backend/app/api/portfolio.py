@@ -75,6 +75,7 @@ def get_holding_detail(
             market_value_eur=point.market_value_eur,
             pl_eur=point.pl_eur,
             pl_pct=point.pl_pct,
+            operation=point.operation,
         )
         for point in detail.history
     ]

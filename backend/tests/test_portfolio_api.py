@@ -13,7 +13,6 @@ from sqlalchemy.pool import StaticPool
 from app.api import deps
 from app.api import portfolio as portfolio_api
 from app.models.base import Base
-from app.models.holdings import Holding
 from app.models.transactions import Transaction
 from app.services import portfolio
 
@@ -95,128 +94,7 @@ def _create_session():
     return engine, TestingSessionLocal
 
 
-def test_history_endpoint_includes_legacy_snapshots(monkeypatch: pytest.MonkeyPatch) -> None:
-    engine, SessionLocal = _create_session()
-    db = SessionLocal()
-    try:
-        portfolio.compute_holdings.cache_clear()
-
-        tx = Transaction(
-            account_id="ACC-123",
-            source="TEST",
-            type_portefeuille="PEA",
-            operation="BUY",
-            asset="AAPL",
-            symbol_or_isin="AAPL",
-            quantity=1.0,
-            unit_price_eur=100.0,
-            fee_eur=0.0,
-            total_eur=100.0,
-            ts=datetime(2024, 1, 1, tzinfo=timezone.utc),
-            notes=None,
-            external_ref="tx-1",
-        )
-        db.add(tx)
-        db.commit()
-
-        legacy_ts = datetime(2023, 12, 31, tzinfo=timezone.utc)
-        blank_ts = datetime(2024, 1, 15, tzinfo=timezone.utc)
-        current_ts = datetime(2024, 2, 1, tzinfo=timezone.utc)
-
-        db.add_all(
-            [
-                Holding(
-                    account_id=None,
-                    asset="AAPL",
-                    symbol_or_isin="AAPL",
-                    quantity=1.0,
-                    pru_eur=100.0,
-                    invested_eur=100.0,
-                    market_price_eur=100.0,
-                    market_value_eur=100.0,
-                    pl_eur=0.0,
-                    pl_pct=0.0,
-                    as_of=legacy_ts,
-                    type_portefeuille="PEA",
-                ),
-                Holding(
-                    account_id="",
-                    asset="AAPL",
-                    symbol_or_isin="AAPL",
-                    quantity=1.0,
-                    pru_eur=100.0,
-                    invested_eur=100.0,
-                    market_price_eur=110.0,
-                    market_value_eur=110.0,
-                    pl_eur=10.0,
-                    pl_pct=10.0,
-                    as_of=blank_ts,
-                    type_portefeuille="PEA",
-                ),
-                Holding(
-                    account_id="ACC-123",
-                    asset="AAPL",
-                    symbol_or_isin="AAPL",
-                    quantity=1.0,
-                    pru_eur=100.0,
-                    invested_eur=100.0,
-                    market_price_eur=120.0,
-                    market_value_eur=120.0,
-                    pl_eur=20.0,
-                    pl_pct=20.0,
-                    as_of=current_ts,
-                    type_portefeuille="PEA",
-                ),
-            ]
-        )
-        db.commit()
-
-        def override_get_db():
-            session = SessionLocal()
-            try:
-                yield session
-            finally:
-                session.close()
-
-        app = FastAPI()
-        app.include_router(portfolio_api.router)
-        app.dependency_overrides[deps.get_db] = override_get_db
-
-        def fake_get_market_price(symbol: str, type_portefeuille: str | None) -> float:
-            return 120.0
-
-        monkeypatch.setattr(portfolio, "get_market_price", fake_get_market_price)
-
-        client = TestClient(app)
-
-        holdings_response = client.get("/portfolio/holdings")
-        assert holdings_response.status_code == 200
-        holdings_payload = holdings_response.json()["holdings"]
-        assert len(holdings_payload) == 1
-        identifier = holdings_payload[0]["identifier"]
-
-        detail_response = client.get(f"/portfolio/holdings/{identifier}")
-        assert detail_response.status_code == 200
-        history = detail_response.json()["history"]
-
-        parsed_history = []
-        for point in history:
-            parsed = datetime.fromisoformat(point["ts"])
-            if parsed.tzinfo is None:
-                parsed = parsed.replace(tzinfo=timezone.utc)
-            parsed_history.append(parsed)
-
-        expected_tx_ts = tx.ts
-        if expected_tx_ts.tzinfo is None:
-            expected_tx_ts = expected_tx_ts.replace(tzinfo=timezone.utc)
-        assert parsed_history == [legacy_ts, expected_tx_ts, blank_ts, current_ts]
-    finally:
-        portfolio.compute_holdings.cache_clear()
-        db.close()
-        engine.dispose()
-
-
-def test_history_endpoint_includes_transaction_points(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_history_endpoint_derives_fifo_points(monkeypatch: pytest.MonkeyPatch) -> None:
     engine, SessionLocal = _create_session()
     db = SessionLocal()
     try:
@@ -225,74 +103,55 @@ def test_history_endpoint_includes_transaction_points(monkeypatch: pytest.Monkey
         tx1_ts = datetime(2024, 1, 1, tzinfo=timezone.utc)
         tx2_ts = datetime(2024, 1, 10, tzinfo=timezone.utc)
         tx3_ts = datetime(2024, 2, 1, tzinfo=timezone.utc)
-        snapshot_ts = datetime(2024, 3, 1, tzinfo=timezone.utc)
 
-        transactions = [
-            Transaction(
-                account_id="ACC-456",
-                source="TEST",
-                type_portefeuille="PEA",
-                operation="BUY",
-                asset="MSFT",
-                symbol_or_isin="MSFT",
-                quantity=1.0,
-                unit_price_eur=100.0,
-                fee_eur=1.0,
-                total_eur=100.0,
-                ts=tx1_ts,
-                notes=None,
-                external_ref="tx-1",
-            ),
-            Transaction(
-                account_id="ACC-456",
-                source="TEST",
-                type_portefeuille="PEA",
-                operation="BUY",
-                asset="MSFT",
-                symbol_or_isin="MSFT",
-                quantity=1.0,
-                unit_price_eur=110.0,
-                fee_eur=1.0,
-                total_eur=110.0,
-                ts=tx2_ts,
-                notes=None,
-                external_ref="tx-2",
-            ),
-            Transaction(
-                account_id="ACC-456",
-                source="TEST",
-                type_portefeuille="PEA",
-                operation="SELL",
-                asset="MSFT",
-                symbol_or_isin="MSFT",
-                quantity=0.5,
-                unit_price_eur=120.0,
-                fee_eur=0.5,
-                total_eur=60.0,
-                ts=tx3_ts,
-                notes=None,
-                external_ref="tx-3",
-            ),
-        ]
-
-        db.add_all(transactions)
-        db.commit()
-
-        db.add(
-            Holding(
-                account_id="ACC-456",
-                asset="MSFT",
-                symbol_or_isin="MSFT",
-                quantity=1.5,
-                pru_eur=161.5 / 1.5,
-                invested_eur=161.5,
-                market_price_eur=130.0,
-                market_value_eur=195.0,
-                pl_eur=33.5,
-                pl_pct=33.5 / 161.5 * 100.0,
-                as_of=snapshot_ts,
-                type_portefeuille="PEA",
-            )
+        db.add_all(
+            [
+                Transaction(
+                    account_id="ACC-456",
+                    source="TEST",
+                    type_portefeuille="PEA",
+                    operation="BUY",
+                    asset="MSFT",
+                    symbol_or_isin="MSFT",
+                    quantity=1.0,
+                    unit_price_eur=100.0,
+                    fee_eur=1.0,
+                    total_eur=100.0,
+                    ts=tx1_ts,
+                    notes=None,
+                    external_ref="tx-1",
+                ),
+                Transaction(
+                    account_id="ACC-456",
+                    source="TEST",
+                    type_portefeuille="PEA",
+                    operation="BUY",
+                    asset="MSFT",
+                    symbol_or_isin="MSFT",
+                    quantity=1.0,
+                    unit_price_eur=110.0,
+                    fee_eur=1.0,
+                    total_eur=110.0,
+                    ts=tx2_ts,
+                    notes=None,
+                    external_ref="tx-2",
+                ),
+                Transaction(
+                    account_id="ACC-456",
+                    source="TEST",
+                    type_portefeuille="PEA",
+                    operation="SELL",
+                    asset="MSFT",
+                    symbol_or_isin="MSFT",
+                    quantity=0.5,
+                    unit_price_eur=120.0,
+                    fee_eur=0.5,
+                    total_eur=60.0,
+                    ts=tx3_ts,
+                    notes=None,
+                    external_ref="tx-3",
+                ),
+            ]
         )
         db.commit()
 
@@ -322,16 +181,113 @@ def test_history_endpoint_includes_transaction_points(monkeypatch: pytest.Monkey
 
         detail_response = client.get(f"/portfolio/holdings/{identifier}")
         assert detail_response.status_code == 200
-        history = detail_response.json()["history"]
+        payload = detail_response.json()
+        history = payload["history"]
 
-        parsed_history = []
-        for point in history:
-            parsed = datetime.fromisoformat(point["ts"])
+        assert payload["history_available"] is True
+        assert [point["operation"] for point in history] == ["BUY", "BUY", "SELL"]
+
+        def parse_ts(value: str) -> datetime:
+            parsed = datetime.fromisoformat(value)
             if parsed.tzinfo is None:
                 parsed = parsed.replace(tzinfo=timezone.utc)
-            parsed_history.append(parsed)
+            return parsed
 
-        assert parsed_history == [tx1_ts, tx2_ts, tx3_ts, snapshot_ts]
+        assert [parse_ts(point["ts"]) for point in history] == [tx1_ts, tx2_ts, tx3_ts]
+
+        assert history[0]["quantity"] == pytest.approx(1.0)
+        assert history[0]["invested_eur"] == pytest.approx(101.0)
+        assert history[0]["pl_eur"] == pytest.approx(-1.0)
+
+        assert history[1]["quantity"] == pytest.approx(2.0)
+        assert history[1]["invested_eur"] == pytest.approx(212.0)
+        assert history[1]["pl_eur"] == pytest.approx(8.0)
+
+        assert history[2]["quantity"] == pytest.approx(1.5)
+        assert history[2]["invested_eur"] == pytest.approx(161.5)
+        assert history[2]["pl_eur"] == pytest.approx(18.5)
+    finally:
+        portfolio.compute_holdings.cache_clear()
+        db.close()
+        engine.dispose()
+
+
+def test_history_endpoint_includes_dividends(monkeypatch: pytest.MonkeyPatch) -> None:
+    engine, SessionLocal = _create_session()
+    db = SessionLocal()
+    try:
+        portfolio.compute_holdings.cache_clear()
+
+        transactions = [
+            Transaction(
+                account_id="ACC-789",
+                source="TEST",
+                type_portefeuille="PEA",
+                operation="BUY",
+                asset="T",
+                symbol_or_isin="T",
+                quantity=2.0,
+                unit_price_eur=50.0,
+                fee_eur=0.0,
+                total_eur=100.0,
+                ts=datetime(2024, 1, 5, tzinfo=timezone.utc),
+                notes=None,
+                external_ref="tx-1",
+            ),
+            Transaction(
+                account_id="ACC-789",
+                source="TEST",
+                type_portefeuille="PEA",
+                operation="DIVIDEND",
+                asset="T",
+                symbol_or_isin="T",
+                quantity=0.0,
+                unit_price_eur=0.0,
+                fee_eur=0.0,
+                total_eur=10.0,
+                ts=datetime(2024, 2, 1, tzinfo=timezone.utc),
+                notes=None,
+                external_ref="tx-2",
+            ),
+        ]
+
+        db.add_all(transactions)
+        db.commit()
+
+        def override_get_db():
+            session = SessionLocal()
+            try:
+                yield session
+            finally:
+                session.close()
+
+        app = FastAPI()
+        app.include_router(portfolio_api.router)
+        app.dependency_overrides[deps.get_db] = override_get_db
+
+        def fake_get_market_price(symbol: str, type_portefeuille: str | None) -> float:
+            return 55.0
+
+        monkeypatch.setattr(portfolio, "get_market_price", fake_get_market_price)
+
+        client = TestClient(app)
+
+        holdings_response = client.get("/portfolio/holdings")
+        assert holdings_response.status_code == 200
+        holdings_payload = holdings_response.json()["holdings"]
+        assert len(holdings_payload) == 1
+        identifier = holdings_payload[0]["identifier"]
+
+        detail_response = client.get(f"/portfolio/holdings/{identifier}")
+        assert detail_response.status_code == 200
+        payload = detail_response.json()
+        history = payload["history"]
+
+        assert [point["operation"] for point in history] == ["BUY", "DIVIDEND"]
+        assert history[1]["quantity"] == pytest.approx(2.0)
+        assert history[1]["invested_eur"] == pytest.approx(100.0)
+        assert payload["dividends_eur"] == pytest.approx(10.0)
+        assert payload["realized_pnl_eur"] == pytest.approx(10.0)
     finally:
         portfolio.compute_holdings.cache_clear()
         db.close()

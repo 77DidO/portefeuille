@@ -18,6 +18,7 @@ interface HistoryPoint {
   market_value_eur: number;
   pl_eur: number;
   pl_pct: number;
+  operation: string;
   id?: string;
 }
 
@@ -183,6 +184,7 @@ export default function PositionDetailPage() {
                       <thead className="bg-slate-50">
                         <tr>
                           <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Date</th>
+                          <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Opération</th>
                           <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Prix</th>
                           <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Valeur</th>
                           <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Investi</th>
@@ -191,16 +193,26 @@ export default function PositionDetailPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {historyData.map((point) => (
-                          <tr key={point.id}>
-                            <td className="px-4 py-2 text-slate-700">{formatDateTime(point.ts)}</td>
-                            <td className="px-4 py-2 text-slate-700">{formatCurrency(point.market_price_eur)}</td>
-                            <td className="px-4 py-2 text-slate-700">{formatCurrency(point.market_value_eur)}</td>
-                            <td className="px-4 py-2 text-slate-700">{formatCurrency(point.invested_eur)}</td>
-                            <td className="px-4 py-2 text-slate-700">{formatCurrency(point.pl_eur)}</td>
-                            <td className="px-4 py-2 text-slate-700">{formatPercentage(point.pl_pct)}</td>
-                          </tr>
-                        ))}
+                        {historyData.map((point) => {
+                          const operation = point.operation ?? "-";
+                          const operationClass =
+                            operation === "BUY"
+                              ? "text-emerald-600"
+                              : operation === "SELL"
+                              ? "text-red-600"
+                              : "text-slate-700";
+                          return (
+                            <tr key={point.id}>
+                              <td className="px-4 py-2 text-slate-700">{formatDateTime(point.ts)}</td>
+                              <td className={`px-4 py-2 font-medium ${operationClass}`}>{operation}</td>
+                              <td className="px-4 py-2 text-slate-700">{formatCurrency(point.market_price_eur)}</td>
+                              <td className="px-4 py-2 text-slate-700">{formatCurrency(point.market_value_eur)}</td>
+                              <td className="px-4 py-2 text-slate-700">{formatCurrency(point.invested_eur)}</td>
+                              <td className="px-4 py-2 text-slate-700">{formatCurrency(point.pl_eur)}</td>
+                              <td className="px-4 py-2 text-slate-700">{formatPercentage(point.pl_pct)}</td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>

@@ -36,6 +36,7 @@ class HoldingHistoryPoint(BaseModel):
     market_value_eur: float
     pl_eur: float
     pl_pct: float
+    operation: str
 
 
 class HoldingDetailResponse(HoldingResponse):
