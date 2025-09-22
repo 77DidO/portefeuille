@@ -434,7 +434,10 @@ def compute_holding_detail(db: Session, identifier: str) -> HoldingDetailView:
         .filter(func.upper(Holding.type_portefeuille) == type_normalized)
     )
     if account_normalized:
-        history_query = history_query.filter(func.upper(Holding.account_id) == account_normalized)
+        blank_account = func.length(func.trim(func.coalesce(Holding.account_id, ""))) == 0
+        history_query = history_query.filter(
+            or_(func.upper(Holding.account_id) == account_normalized, blank_account)
+        )
     history_rows = history_query.order_by(Holding.as_of.asc()).all()
 
     history = [
