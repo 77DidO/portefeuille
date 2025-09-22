@@ -86,6 +86,9 @@ _EURONEXT_SUFFIX_TO_MIC = {
     "IR": "XDUB",
     "DU": "XDUB",
 }
+_EURONEXT_MIC_TO_SUFFIX = {}
+for suffix, mic in _EURONEXT_SUFFIX_TO_MIC.items():
+    _EURONEXT_MIC_TO_SUFFIX.setdefault(mic, suffix)
 
 
 class MarketPriceUnavailable(RuntimeError):
@@ -360,6 +363,29 @@ def _normalize_issue(symbol: str, isin: str, mic: str) -> str:
     return f"{symbol.strip().upper()}-{isin.strip().upper()}-{mic.strip().upper()}"
 
 
+def _derive_equity_fetch_symbol(resolved_symbol: str) -> str:
+    normalized = (resolved_symbol or "").strip().upper()
+    if not normalized:
+        return normalized
+
+    if _ISIN_REGEX.match(normalized):
+        fetched = _search_symbol_for_isin(normalized)
+        if fetched:
+            return fetched
+        return normalized
+
+    issue_match = _EURONEXT_ISSUE_PATTERN.match(normalized)
+    if issue_match:
+        symbol = issue_match.group("symbol")
+        mic = _normalize_mic(issue_match.group("mic"))
+        if symbol and mic:
+            suffix = _EURONEXT_MIC_TO_SUFFIX.get(mic)
+            if suffix:
+                return f"{symbol}.{suffix}"
+
+    return normalized
+
+
 def _extract_symbol_mic(candidate: str) -> Tuple[str, str] | None:
     for sep in ("-", ".", ":", "@", "/"):
         if sep in candidate:
@@ -491,9 +517,11 @@ def get_market_price(symbol: str, type_portefeuille: str | None) -> float:
                 return price
 
     fetcher = _fetch_equity_price
+    fetch_symbol = resolved_symbol
     if normalized_type == "CRYPTO":
         fetcher = _fetch_crypto_price
     else:
+        fetch_symbol = _derive_equity_fetch_symbol(resolved_symbol)
         _record_portfolio_log(
             "WARNING",
             f"Falling back to secondary price source for {symbol}",
@@ -502,6 +530,7 @@ def get_market_price(symbol: str, type_portefeuille: str | None) -> float:
                 "resolved_symbol": resolved_symbol,
                 "source": fetcher.__name__,
                 "type_portefeuille": normalized_type,
+                "fetch_symbol": fetch_symbol,
             },
         )
 
@@ -510,6 +539,7 @@ def get_market_price(symbol: str, type_portefeuille: str | None) -> float:
         "resolved_symbol": resolved_symbol,
         "source": fetcher.__name__,
         "type_portefeuille": normalized_type,
+        "fetch_symbol": fetch_symbol,
     }
     _record_portfolio_log(
         "INFO",
@@ -518,7 +548,7 @@ def get_market_price(symbol: str, type_portefeuille: str | None) -> float:
     )
 
     try:
-        price = fetcher(resolved_symbol)
+        price = fetcher(fetch_symbol)
     except MarketPriceUnavailable:
         _record_portfolio_log(
             "ERROR",
