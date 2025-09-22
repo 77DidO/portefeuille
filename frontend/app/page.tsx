@@ -12,6 +12,7 @@ import { formatErrorDetail } from "@/lib/errors";
 const COLORS = ["#1d4ed8", "#22c55e", "#f97316", "#6366f1"];
 
 type Holding = {
+  identifier: string;
   asset: string;
   symbol_or_isin?: string;
   quantity: number;
@@ -23,6 +24,7 @@ type Holding = {
   pl_pct: number;
   type_portefeuille: string;
   as_of: string | null;
+  account_id?: string | null;
 };
 
 type Summary = {
@@ -232,11 +234,11 @@ export default function DashboardPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {holdings.map((holding) => (
-                  <tr key={`${holding.asset}-${holding.symbol_or_isin}`} className="hover:bg-slate-50">
+                  <tr key={holding.identifier} className="hover:bg-slate-50">
                     <Td>{holding.type_portefeuille}</Td>
                     <Td>
                       <Link
-                        href={`/positions/${encodeURIComponent(holding.symbol_or_isin ?? holding.asset)}`}
+                        href={`/positions/${encodeURIComponent(holding.identifier)}`}
                         className="font-medium text-indigo-600 hover:underline"
                       >
                         {holding.symbol_or_isin ?? holding.asset}

@@ -47,6 +47,7 @@ def test_export_holdings_uses_persisted_portfolio_type(monkeypatch):
     try:
         as_of = datetime(2024, 1, 1, tzinfo=timezone.utc)
         holding_view = HoldingView(
+            identifier="CRYPTO::SOL",
             asset="SOL",
             symbol_or_isin="SOL",
             quantity=2.0,

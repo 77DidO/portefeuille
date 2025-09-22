@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 
 class HoldingBase(BaseModel):
+    identifier: str
     asset: str
     symbol_or_isin: Optional[str] = None
     quantity: float
@@ -17,6 +18,7 @@ class HoldingBase(BaseModel):
     pl_eur: float
     pl_pct: float
     type_portefeuille: str
+    account_id: Optional[str] = None
 
 
 class HoldingResponse(HoldingBase):

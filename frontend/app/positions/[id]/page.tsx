@@ -27,6 +27,7 @@ interface HistoryPointWithMeta extends HistoryPoint {
 }
 
 interface HoldingDetail {
+  identifier: string;
   asset: string;
   symbol_or_isin?: string | null;
   quantity: number;
@@ -42,6 +43,7 @@ interface HoldingDetail {
   realized_pnl_eur: number;
   dividends_eur: number;
   history_available: boolean;
+  account_id?: string | null;
 }
 
 export default function PositionDetailPage() {
