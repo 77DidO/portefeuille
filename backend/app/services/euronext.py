@@ -9,6 +9,7 @@ from cachetools import TTLCache
 __all__ = [
     "EuronextAPIError",
     "fetch_price",
+    "search_instrument_by_isin",
     "lookup_instrument_by_isin",
     "clear_cache",
 ]
@@ -17,6 +18,8 @@ _API_URL = "https://live.euronext.com/en/ajax/getLiveData/issue"
 _CACHE: TTLCache[str, float] = TTLCache(maxsize=256, ttl=300)
 _LOOKUP_URL = "https://live.euronext.com/en/ajax/getListingByIsin"
 _LOOKUP_CACHE: TTLCache[str, Tuple[str, str]] = TTLCache(maxsize=256, ttl=300)
+_SEARCH_URL = "https://live.euronext.com/en/ajax/search"
+_SEARCH_CACHE: TTLCache[str, Tuple[str, str]] = TTLCache(maxsize=256, ttl=300)
 _EURONEXT_MICS = {
     "XPAR",
     "XAMS",
@@ -49,6 +52,50 @@ def _extract_lookup_candidates(payload: object) -> Tuple[Dict[str, object], ...]
     if isinstance(payload, list):
         return tuple(item for item in payload if isinstance(item, dict))
     return tuple()
+
+
+def search_instrument_by_isin(isin: str) -> Tuple[str, str]:
+    normalized = _normalize(isin)
+    if not normalized:
+        raise EuronextAPIError("Missing ISIN for Euronext search")
+    if not _ISIN_REGEX.match(normalized):
+        raise EuronextAPIError(f"Invalid ISIN '{isin}' for Euronext search")
+
+    try:
+        return _SEARCH_CACHE[normalized]
+    except KeyError:
+        pass
+
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            response = client.get(_SEARCH_URL, params={"search": normalized})
+            response.raise_for_status()
+            payload = response.json()
+    except httpx.HTTPError as exc:
+        raise EuronextAPIError(f"Euronext search failed for '{normalized}'") from exc
+    except ValueError as exc:
+        raise EuronextAPIError("Invalid JSON received from Euronext search") from exc
+
+    for candidate in _extract_lookup_candidates(payload):
+        candidate_isin = _normalize(candidate.get("isin"))
+        if candidate_isin and candidate_isin != normalized:
+            continue
+        symbol = _normalize(candidate.get("symbol"))
+        if not symbol:
+            symbol = _normalize(candidate.get("mnemonic"))
+        mic = _normalize(candidate.get("mic"))
+        if not mic:
+            mic = _normalize(candidate.get("market"))
+        if not mic:
+            mic = _normalize(candidate.get("micCode"))
+        if mic and mic not in _EURONEXT_MICS:
+            mic = _normalize(candidate.get("isoMic"))
+        if symbol and mic and mic in _EURONEXT_MICS:
+            result = (symbol, mic)
+            _SEARCH_CACHE[normalized] = result
+            return result
+
+    raise EuronextAPIError(f"Euronext search returned no instrument for '{normalized}'")
 
 
 def lookup_instrument_by_isin(isin: str) -> Tuple[str, str]:
@@ -181,3 +228,4 @@ def clear_cache() -> None:
 
     _CACHE.clear()
     _LOOKUP_CACHE.clear()
+    _SEARCH_CACHE.clear()
