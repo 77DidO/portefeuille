@@ -14,7 +14,6 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models.transactions import Transaction
-from app.models.holdings import Holding
 from app.models.settings import Setting
 from app.services.fifo import FIFOPortfolio
 from app.services import binance, euronext
@@ -49,6 +48,7 @@ class HoldingHistoryPointView:
     market_value_eur: float
     pl_eur: float
     pl_pct: float
+    operation: str
 
 
 @dataclass
@@ -488,37 +488,6 @@ def compute_holding_detail(db: Session, identifier: str) -> HoldingDetailView:
     type_normalized = _normalize_portfolio_type(holding.type_portefeuille)
     account_normalized = _normalize_account_id(holding.account_id)
 
-    history_query = (
-        db.query(Holding)
-        .filter(
-            or_(
-                func.upper(Holding.symbol_or_isin) == symbol_normalized,
-                func.upper(Holding.asset) == symbol_normalized,
-            )
-        )
-        .filter(func.upper(Holding.type_portefeuille) == type_normalized)
-    )
-    if account_normalized:
-        blank_account = func.length(func.trim(func.coalesce(Holding.account_id, ""))) == 0
-        history_query = history_query.filter(
-            or_(func.upper(Holding.account_id) == account_normalized, blank_account)
-        )
-    history_rows = history_query.order_by(Holding.as_of.asc()).all()
-
-    history = [
-        HoldingHistoryPointView(
-            ts=row.as_of,
-            quantity=row.quantity,
-            invested_eur=row.invested_eur,
-            market_price_eur=row.market_price_eur,
-            market_value_eur=row.market_value_eur,
-            pl_eur=row.pl_eur,
-            pl_pct=row.pl_pct,
-        )
-        for row in history_rows
-    ]
-    history_by_ts = {point.ts: point for point in history}
-
     tx_query = (
         db.query(Transaction)
         .filter(
@@ -534,28 +503,33 @@ def compute_holding_detail(db: Session, identifier: str) -> HoldingDetailView:
     tx_rows = tx_query.order_by(Transaction.ts.asc(), Transaction.id.asc()).all()
 
     fifo = FIFOPortfolio()
-    fifo_key = _make_portfolio_key(holding.type_portefeuille, holding.symbol_or_isin or holding.asset, holding.account_id)
+    fifo_key = _make_portfolio_key(
+        holding.type_portefeuille, holding.symbol_or_isin or holding.asset, holding.account_id
+    )
+    history: List[HoldingHistoryPointView] = []
+    last_price = None
     for tx in tx_rows:
         operation = (tx.operation or "").upper()
-        position_changed = False
+        if tx.unit_price_eur is not None:
+            last_price = tx.unit_price_eur
         if operation == "BUY":
             fifo.buy(fifo_key, tx.quantity, tx.total_eur + tx.fee_eur)
-            position_changed = abs(tx.quantity) > 1e-12
         elif operation == "SELL":
             fifo.sell(fifo_key, tx.quantity, tx.total_eur, fee_eur=tx.fee_eur)
-            position_changed = abs(tx.quantity) > 1e-12
         elif operation == "DIVIDEND":
             fifo.dividend(fifo_key, tx.total_eur - tx.fee_eur)
         else:
             fifo.dividend(fifo_key, tx.total_eur)
 
-        if position_changed and tx.ts not in history_by_ts:
-            qty, cost_basis = fifo.current_position(fifo_key)
-            market_price = holding.market_price_eur
-            market_value = market_price * qty
-            pl_eur = market_value - cost_basis
-            pl_pct = (pl_eur / cost_basis * 100.0) if cost_basis else 0.0
-            history_by_ts[tx.ts] = HoldingHistoryPointView(
+        qty, cost_basis = fifo.current_position(fifo_key)
+        if last_price is None:
+            last_price = holding.market_price_eur
+        market_price = last_price if last_price is not None else holding.market_price_eur
+        market_value = market_price * qty
+        pl_eur = market_value - cost_basis
+        pl_pct = (pl_eur / cost_basis * 100.0) if cost_basis else 0.0
+        history.append(
+            HoldingHistoryPointView(
                 ts=tx.ts,
                 quantity=qty,
                 invested_eur=cost_basis,
@@ -563,7 +537,9 @@ def compute_holding_detail(db: Session, identifier: str) -> HoldingDetailView:
                 market_value_eur=market_value,
                 pl_eur=pl_eur,
                 pl_pct=pl_pct,
+                operation=operation or "UNKNOWN",
             )
+        )
 
     state = fifo.as_dict().get(fifo_key)
     realized = state.realized_pnl if state else 0.0
@@ -572,8 +548,6 @@ def compute_holding_detail(db: Session, identifier: str) -> HoldingDetailView:
         for tx in tx_rows
         if (tx.operation or "").upper() == "DIVIDEND"
     )
-
-    history = sorted(history_by_ts.values(), key=lambda point: point.ts)
 
     return HoldingDetailView(
         identifier=holding.identifier,
