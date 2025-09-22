@@ -29,6 +29,8 @@ export default function TransactionsPage() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [sourceFilter, setSourceFilter] = useState<string>("");
+  const [typeFilter, setTypeFilter] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -36,6 +38,24 @@ export default function TransactionsPage() {
   }, []);
 
   const hasTransactions = useMemo(() => transactions.length > 0, [transactions]);
+  const sourceOptions = useMemo(() => {
+    return Array.from(new Set(transactions.map((transaction) => transaction.source))).sort((a, b) =>
+      a.localeCompare(b)
+    );
+  }, [transactions]);
+  const typeOptions = useMemo(() => {
+    return Array.from(new Set(transactions.map((transaction) => transaction.type_portefeuille))).sort((a, b) =>
+      a.localeCompare(b)
+    );
+  }, [transactions]);
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter((transaction) => {
+      const matchSource = sourceFilter ? transaction.source === sourceFilter : true;
+      const matchType = typeFilter ? transaction.type_portefeuille === typeFilter : true;
+      return matchSource && matchType;
+    });
+  }, [transactions, sourceFilter, typeFilter]);
+  const filtersActive = sourceFilter !== "" || typeFilter !== "";
 
   async function refresh() {
     try {
@@ -227,9 +247,67 @@ export default function TransactionsPage() {
 
         <section className="rounded-xl bg-white p-6 shadow">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-700">Historique</h2>
-            <div className="text-sm text-slate-400">{transactions.length} lignes</div>
+            <div>
+              <h2 className="text-lg font-semibold text-slate-700">Historique</h2>
+              <p className="text-xs text-slate-400">Trié par date de transaction — plus récentes en premier</p>
+            </div>
+            <div className="text-right text-sm text-slate-400">
+              <div>{transactions.length} lignes au total</div>
+              {filtersActive ? (
+                <div>{filteredTransactions.length} lignes visibles</div>
+              ) : null}
+            </div>
           </div>
+          {hasTransactions ? (
+            <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end">
+              <div className="flex-1">
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Source
+                </label>
+                <select
+                  className="mt-1 w-full rounded border border-slate-200 px-3 py-2 text-sm"
+                  value={sourceFilter}
+                  onChange={(event) => setSourceFilter(event.target.value)}
+                >
+                  <option value="">Toutes</option>
+                  {sourceOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Type de portefeuille
+                </label>
+                <select
+                  className="mt-1 w-full rounded border border-slate-200 px-3 py-2 text-sm"
+                  value={typeFilter}
+                  onChange={(event) => setTypeFilter(event.target.value)}
+                >
+                  <option value="">Tous</option>
+                  {typeOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option.toUpperCase()}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {filtersActive ? (
+                <button
+                  type="button"
+                  className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                  onClick={() => {
+                    setSourceFilter("");
+                    setTypeFilter("");
+                  }}
+                >
+                  Réinitialiser les filtres
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           {loading ? <p>Chargement…</p> : null}
           {error ? <p className="text-red-600">{error}</p> : null}
           {!loading && !hasTransactions ? (
@@ -255,7 +333,7 @@ export default function TransactionsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {transactions.map((transaction) => (
+                  {filteredTransactions.map((transaction) => (
                     <Fragment key={transaction.id}>
                       <tr className="hover:bg-slate-50">
                         <Td>{formatDateTime(transaction.ts)}</Td>
@@ -432,6 +510,11 @@ export default function TransactionsPage() {
                 </tbody>
               </table>
             </div>
+          ) : null}
+          {!loading && hasTransactions && filteredTransactions.length === 0 ? (
+            <p className="mt-4 text-sm text-slate-500">
+              Aucune transaction ne correspond aux filtres sélectionnés.
+            </p>
           ) : null}
           {actionError && (!editForm || editingId === null) ? (
             <p className="mt-4 text-sm text-red-600">{actionError}</p>
