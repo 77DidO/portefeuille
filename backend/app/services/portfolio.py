@@ -518,10 +518,67 @@ def get_market_price(symbol: str, type_portefeuille: str | None) -> float:
 
     fetcher = _fetch_equity_price
     fetch_symbol = resolved_symbol
+    adjusted_fetch_symbol = None
+    derived_fetch_symbol = (fetch_symbol or "").strip().upper()
     if normalized_type == "CRYPTO":
         fetcher = _fetch_crypto_price
     else:
         fetch_symbol = _derive_equity_fetch_symbol(resolved_symbol)
+
+        normalized_resolved = (resolved_symbol or "").strip().upper()
+        derived_fetch_symbol = (fetch_symbol or "").strip().upper()
+
+        needs_adjustment = False
+        if _ISIN_REGEX.match(normalized_resolved):
+            needs_adjustment = _ISIN_REGEX.match(derived_fetch_symbol) is not None
+        else:
+            if _EURONEXT_ISSUE_PATTERN.match(normalized_resolved):
+                needs_adjustment = derived_fetch_symbol == normalized_resolved
+            elif _EURONEXT_COMBINED_PATTERN.match(normalized_resolved):
+                needs_adjustment = derived_fetch_symbol == normalized_resolved
+
+        if needs_adjustment:
+            adjusted_fetch_symbol = None
+            if _ISIN_REGEX.match(normalized_resolved):
+                adjusted_fetch_symbol = _search_symbol_for_isin(normalized_resolved)
+            else:
+                issue_match = _EURONEXT_ISSUE_PATTERN.match(normalized_resolved)
+                if not issue_match:
+                    combined_match = _EURONEXT_COMBINED_PATTERN.match(normalized_resolved)
+                    if combined_match:
+                        symbol = combined_match.group("symbol")
+                        isin_value = combined_match.group("isin")
+                        mic_value = combined_match.group("mic")
+                        mic = _normalize_mic(mic_value) if mic_value else None
+                        if symbol and mic:
+                            suffix = _EURONEXT_MIC_TO_SUFFIX.get(mic)
+                            if suffix:
+                                adjusted_fetch_symbol = f"{symbol}.{suffix}"
+                        if not adjusted_fetch_symbol and isin_value and _ISIN_REGEX.match(isin_value):
+                            adjusted_fetch_symbol = _search_symbol_for_isin(isin_value)
+                else:
+                    symbol = issue_match.group("symbol")
+                    mic_value = issue_match.group("mic")
+                    mic = _normalize_mic(mic_value)
+                    if symbol and mic:
+                        suffix = _EURONEXT_MIC_TO_SUFFIX.get(mic)
+                        if suffix:
+                            adjusted_fetch_symbol = f"{symbol}.{suffix}"
+                    if not adjusted_fetch_symbol:
+                        isin_value = issue_match.group("isin")
+                        if isin_value and _ISIN_REGEX.match(isin_value):
+                            adjusted_fetch_symbol = _search_symbol_for_isin(isin_value)
+
+            if adjusted_fetch_symbol:
+                fetch_symbol = adjusted_fetch_symbol
+
+        adjustment_meta: Dict[str, object] = {}
+        if adjusted_fetch_symbol and adjusted_fetch_symbol != derived_fetch_symbol:
+            adjustment_meta = {
+                "adjusted_fetch_symbol": adjusted_fetch_symbol,
+                "initial_fetch_symbol": derived_fetch_symbol,
+            }
+
         _record_portfolio_log(
             "WARNING",
             f"Falling back to secondary price source for {symbol}",
@@ -531,6 +588,7 @@ def get_market_price(symbol: str, type_portefeuille: str | None) -> float:
                 "source": fetcher.__name__,
                 "type_portefeuille": normalized_type,
                 "fetch_symbol": fetch_symbol,
+                **adjustment_meta,
             },
         )
 
@@ -541,6 +599,9 @@ def get_market_price(symbol: str, type_portefeuille: str | None) -> float:
         "type_portefeuille": normalized_type,
         "fetch_symbol": fetch_symbol,
     }
+    if adjusted_fetch_symbol and adjusted_fetch_symbol != derived_fetch_symbol:
+        attempt_meta["adjusted_fetch_symbol"] = adjusted_fetch_symbol
+        attempt_meta["initial_fetch_symbol"] = derived_fetch_symbol
     _record_portfolio_log(
         "INFO",
         f"Fetching market price for {symbol} via {fetcher.__name__}",
