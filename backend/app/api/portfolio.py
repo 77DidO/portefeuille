@@ -43,10 +43,12 @@ def get_holdings(db: Session = Depends(deps.get_db)) -> HoldingsResponse:
         )
         for h in holdings_raw
     ]
+    total_value = sum(h.market_value_eur for h in holdings)
+    total_invested = sum(h.invested_eur for h in holdings)
     summary = {
-        "total_value_eur": sum(h.market_value_eur for h in holdings),
-        "total_invested_eur": sum(h.invested_eur for h in holdings),
-        "pnl_eur": totals["latent_pnl"] + totals["realized_pnl"],
+        "total_value_eur": total_value,
+        "total_invested_eur": total_invested,
+        "pnl_eur": total_value - total_invested,
         "pnl_pct": (sum(h.pl_eur for h in holdings) / sum(h.invested_eur for h in holdings) * 100.0)
         if sum(h.invested_eur for h in holdings)
         else 0.0,
