@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api import deps
@@ -16,8 +16,19 @@ router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 
 @router.get("/", response_model=list[TransactionResponse])
-def list_transactions(db: Session = Depends(deps.get_db)):
-    return db.query(Transaction).order_by(Transaction.ts.desc()).limit(500).all()
+def list_transactions(
+    source: str | None = Query(None),
+    type_portefeuille: str | None = Query(None, alias="type"),
+    db: Session = Depends(deps.get_db),
+):
+    query = db.query(Transaction)
+
+    if source is not None:
+        query = query.filter(Transaction.source == source)
+    if type_portefeuille is not None:
+        query = query.filter(Transaction.type_portefeuille == type_portefeuille)
+
+    return query.order_by(Transaction.ts.desc()).limit(500).all()
 
 
 @router.post("/import")
