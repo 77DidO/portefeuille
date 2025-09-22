@@ -66,8 +66,9 @@ def test_get_market_price_prefers_euronext(monkeypatch):
 
     fetch_calls: list[str] = []
 
-    def fake_fetch(symbol: str) -> float:
-        fetch_calls.append(symbol)
+    def fake_fetch(issue: str) -> float:
+        fetch_calls.append(issue)
+        assert issue == "MC-FR0000123456-XPAR"
         return 42.0
 
     def fail_yahoo(symbol: str) -> float:
@@ -81,19 +82,20 @@ def test_get_market_price_prefers_euronext(monkeypatch):
 
     assert price == pytest.approx(42.0)
     assert resolved_calls == [("FR0000123456", "PEA")]
-    assert fetch_calls == ["FR0000123456"]
+    assert fetch_calls == ["MC-FR0000123456-XPAR"]
 
 
 def test_get_market_price_falls_back_to_yahoo(monkeypatch):
     _clear_portfolio_caches()
 
     def fake_resolve(symbol: str, type_portefeuille: str | None) -> str:
-        return symbol
+        return "MC.PA"
 
     fetch_calls: list[str] = []
 
-    def failing_fetch(symbol: str) -> float:
-        fetch_calls.append(symbol)
+    def failing_fetch(issue: str) -> float:
+        fetch_calls.append(issue)
+        assert issue == "MC-FR0000123456-XPAR"
         raise portfolio.euronext.EuronextAPIError("boom")
 
     yahoo_calls: list[str] = []
@@ -106,10 +108,10 @@ def test_get_market_price_falls_back_to_yahoo(monkeypatch):
     monkeypatch.setattr(portfolio.euronext, "fetch_price", failing_fetch)
     monkeypatch.setattr(portfolio, "_fetch_equity_price", fake_yahoo)
 
-    price = portfolio.get_market_price("MC.PA", "CTO")
+    price = portfolio.get_market_price("FR0000123456", "CTO")
 
     assert price == pytest.approx(84.0)
-    assert fetch_calls == ["MC.PA"]
+    assert fetch_calls == ["MC-FR0000123456-XPAR"]
     assert yahoo_calls == ["MC.PA"]
 
 
