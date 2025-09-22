@@ -23,6 +23,8 @@ class Transaction(Base):
     quantity = Column(Float, nullable=False)
     unit_price_eur = Column(Float, nullable=False)
     fee_eur = Column(Float, nullable=False, default=0.0)
+    fee_asset = Column(String(64), nullable=True)
+    fx_rate = Column(Float, nullable=True, default=1.0, server_default="1.0")
     total_eur = Column(Float, nullable=False)
     ts = Column(DateTime(timezone=True), nullable=False, index=True)
     notes = Column(Text, nullable=True)

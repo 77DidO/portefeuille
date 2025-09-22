@@ -21,6 +21,8 @@ REQUIRED_COLUMNS = {
         "quantity",
         "unit_price_eur",
         "fee_eur",
+        "fee_asset",
+        "fx_rate",
         "total_eur",
         "ts",
     ]
@@ -87,6 +89,10 @@ class Importer:
         for idx, row in enumerate(reader, start=2):
             try:
                 external_ref = row.get("external_ref") or f"import_{row.get('source')}_{row.get('ts')}_{idx}"
+                fee_asset_raw = row.get("fee_asset")
+                fee_asset = fee_asset_raw.strip() if fee_asset_raw is not None else ""
+                fx_rate_raw = row.get("fx_rate")
+                fx_rate = fx_rate_raw.strip() if fx_rate_raw is not None else ""
                 data = {
                     "source": row["source"],
                     "type_portefeuille": row["type_portefeuille"],
@@ -96,6 +102,8 @@ class Importer:
                     "quantity": float(row["quantity"]),
                     "unit_price_eur": float(row["unit_price_eur"]),
                     "fee_eur": float(row["fee_eur"] or 0.0),
+                    "fee_asset": fee_asset or None,
+                    "fx_rate": float(fx_rate or 1.0),
                     "total_eur": float(row["total_eur"]),
                     "ts": to_utc(datetime.fromisoformat(row["ts"].replace("Z", "+00:00"))),
                     "notes": row.get("notes") or None,

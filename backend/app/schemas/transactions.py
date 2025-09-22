@@ -15,6 +15,8 @@ class TransactionBase(BaseModel):
     quantity: float
     unit_price_eur: float
     fee_eur: float
+    fee_asset: Optional[str] = None
+    fx_rate: Optional[float] = 1.0
     total_eur: float
     ts: datetime
     notes: Optional[str]
@@ -41,6 +43,8 @@ class TransactionUpdate(BaseModel):
     quantity: float | None = None
     unit_price_eur: float | None = None
     fee_eur: float | None = None
+    fee_asset: Optional[str] = None
+    fx_rate: float | None = None
     total_eur: float | None = None
     ts: datetime | None = None
     notes: Optional[str] = None

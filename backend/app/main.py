@@ -84,6 +84,8 @@ def seed_demo() -> None:
                 quantity=0.01,
                 unit_price_eur=60000.0,
                 fee_eur=1.0,
+                fee_asset="EUR",
+                fx_rate=1.0,
                 total_eur=600.0,
                 ts=datetime(2024, 1, 10, 12, 0, tzinfo=timezone.utc),
                 notes="Seed demo",

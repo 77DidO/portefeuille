@@ -6,11 +6,13 @@ Chaque fichier est encodé en UTF-8 avec séparateur `,` et inclut une ligne d'e
 
 ## transactions.csv
 
-`source,type_portefeuille,operation,asset,symbol_or_isin,quantity,unit_price_eur,fee_eur,total_eur,ts,notes,external_ref`
+`source,type_portefeuille,operation,asset,symbol_or_isin,quantity,unit_price_eur,fee_eur,fee_asset,fx_rate,total_eur,ts,notes,external_ref`
 
 - `ts` doit être au format ISO 8601 (UTC ou avec décalage horaire explicite). Lors de l'import, les timestamps sont convertis en UTC.
 - `external_ref` est utilisé pour détecter les doublons : si une transaction avec la même référence existe déjà, elle est mise à jour au lieu d'être dupliquée.
 - `operation` accepte les mêmes valeurs que dans l'application (ex. `BUY`, `SELL`, `DIVIDEND`, `TRANSFER`, etc.).
+- `fee_asset` permet d'indiquer la devise d'origine des frais si différente de l'euro.
+- `fx_rate` correspond au taux de change appliqué pour convertir la transaction en EUR (par défaut `1.0`).
 
 ## holdings.csv
 
