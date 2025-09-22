@@ -125,6 +125,7 @@ export default function JournalPage() {
 
   async function handleUpdate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    console.log("handleUpdate", editingId, editForm);
     if (editingId === null) return;
     const original = trades.find((trade) => trade.id === editingId);
     if (!original) return;
@@ -136,6 +137,7 @@ export default function JournalPage() {
       setUpdateError(err instanceof Error ? err.message : "Valeurs numériques invalides");
       return;
     }
+    console.log("Update payload", payload);
     if (Object.keys(payload).length === 0) {
       setUpdateStatus("Aucune modification détectée");
       return;
@@ -145,12 +147,15 @@ export default function JournalPage() {
     setUpdateError(null);
     setUpdateStatus(null);
     try {
+      console.log("Updating trade", editingId);
       await api.patch(`/journal/${editingId}`, payload);
+      console.log("Trade updated", editingId);
       setUpdateStatus("Trade mis à jour");
       setEditingId(null);
       setEditForm({ ...EMPTY_FORM });
       await refresh();
     } catch (err: any) {
+      console.error("Update failed", err);
       setUpdateError(formatErrorDetail(err.response?.data?.detail, "Impossible de mettre à jour"));
     } finally {
       setUpdating(false);
@@ -459,6 +464,7 @@ function buildUpdatePayload(form: TradeFormState, original: JournalTrade) {
   if (form.closed_at !== toDateTimeLocalInput(original.closed_at))
     payload.closed_at = form.closed_at ? fromDateTimeLocalInput(form.closed_at) : null;
   if (form.notes.trim() !== (original.notes ?? "")) payload.notes = form.notes.trim() || null;
+  console.log("buildUpdatePayload", payload);
   return payload;
 }
 
