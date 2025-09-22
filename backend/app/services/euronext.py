@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import logging
 import re
 from typing import Dict, Tuple
 
 import httpx
 from cachetools import TTLCache
+
+from app.db.session import SessionLocal
+from app.services.system_logs import record_log
 
 __all__ = [
     "EuronextAPIError",
@@ -28,6 +32,9 @@ _EURONEXT_MICS = {
     "XMIL",
     "XDUB",
 }
+
+
+logger = logging.getLogger(__name__)
 _ISSUE_REGEX = re.compile(
     r"^(?P<symbol>[A-Z0-9]+)-(?P<isin>[A-Z]{2}[A-Z0-9]{9}[0-9])-(?P<mic>X[A-Z0-9]{3})$"
 )
@@ -36,6 +43,21 @@ _ISIN_REGEX = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
 
 class EuronextAPIError(RuntimeError):
     """Raised when fetching data from Euronext fails."""
+
+
+def _record_euronext_log(level: str, message: str, meta: Dict[str, object] | None = None) -> None:
+    log_level = logging._nameToLevel.get(level.upper(), logging.INFO)
+    logger.log(log_level, message)
+
+    try:
+        with SessionLocal() as db:
+            record_log(db, level.upper(), "euronext", message, meta=meta)
+    except Exception as exc:  # pragma: no cover - logging should not disrupt processing
+        logger.warning(
+            "Failed to record Euronext system log: %s",
+            exc,
+            extra={"meta": meta},
+        )
 
 
 def _normalize(value: str | None) -> str:
@@ -203,18 +225,53 @@ def fetch_price(identifier: str) -> float:
         pass
 
     params, cache_key, aliases = _resolve_params(normalized)
+    request_meta = {
+        "identifier": identifier,
+        "normalized": normalized,
+        "url": _API_URL,
+        "params": params,
+    }
+    _record_euronext_log(
+        "INFO",
+        f"Requesting Euronext price for {normalized} at {_API_URL}",
+        request_meta,
+    )
 
     try:
         with httpx.Client(timeout=10.0) as client:
             response = client.get(_API_URL, params=params)
             response.raise_for_status()
             payload = response.json()
+    except httpx.HTTPStatusError as exc:
+        error_meta = {**request_meta, "status_code": exc.response.status_code}
+        _record_euronext_log(
+            "WARNING",
+            f"Euronext HTTP error {exc.response.status_code} for {normalized}",
+            error_meta,
+        )
+        raise EuronextAPIError(f"Euronext request failed for '{normalized}'") from exc
     except httpx.HTTPError as exc:
+        _record_euronext_log(
+            "ERROR",
+            f"Euronext request failed for {normalized}: {exc}",
+            request_meta,
+        )
         raise EuronextAPIError(f"Euronext request failed for '{normalized}'") from exc
     except ValueError as exc:
+        _record_euronext_log(
+            "ERROR",
+            f"Invalid JSON received from Euronext for {normalized}",
+            request_meta,
+        )
         raise EuronextAPIError("Invalid JSON received from Euronext") from exc
 
     price_value = _extract_price(payload)
+    success_meta = {**request_meta, "price": price_value}
+    _record_euronext_log(
+        "INFO",
+        f"Euronext price for {normalized} is {price_value}",
+        success_meta,
+    )
 
     _CACHE[normalized] = price_value
     _CACHE[cache_key] = price_value
