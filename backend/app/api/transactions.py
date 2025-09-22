@@ -19,6 +19,8 @@ router = APIRouter(prefix="/transactions", tags=["transactions"])
 def list_transactions(
     source: str | None = Query(None),
     type_portefeuille: str | None = Query(None, alias="type"),
+    asset: str | None = Query(None),
+    operation: str | None = Query(None),
     db: Session = Depends(deps.get_db),
 ):
     query = db.query(Transaction)
@@ -27,6 +29,10 @@ def list_transactions(
         query = query.filter(Transaction.source == source)
     if type_portefeuille is not None:
         query = query.filter(Transaction.type_portefeuille == type_portefeuille)
+    if asset is not None:
+        query = query.filter(Transaction.asset == asset)
+    if operation is not None:
+        query = query.filter(Transaction.operation == operation)
 
     return query.order_by(Transaction.ts.desc()).limit(500).all()
 
