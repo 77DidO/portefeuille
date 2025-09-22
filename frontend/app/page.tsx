@@ -6,7 +6,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAx
 
 import { AppShell } from "@/components/AppShell";
 import { api } from "@/lib/api";
-import { formatCurrency, formatDateTime } from "@/lib/format";
+import { formatCurrency, formatDateTime, formatNumber } from "@/lib/format";
 import { formatErrorDetail } from "@/lib/errors";
 
 const COLORS = ["#1d4ed8", "#22c55e", "#f97316", "#6366f1"];
@@ -248,11 +248,17 @@ export default function DashboardPage() {
                     <Td>{formatCurrency(holding.pru_eur)}</Td>
                     <Td>{formatCurrency(holding.market_price_eur)}</Td>
                     <Td>{formatCurrency(holding.market_value_eur)}</Td>
-                    <Td className={holding.pl_eur >= 0 ? "text-emerald-600" : "text-red-600"}>
-                      <TrendValue value={holding.pl_eur} formatted={formatCurrency(holding.pl_eur)} />
+                    <Td>
+                      <TrendValue
+                        value={holding.pl_eur}
+                        formatter={(val) => formatCurrency(val)}
+                      />
                     </Td>
-                    <Td className={holding.pl_pct >= 0 ? "text-emerald-600" : "text-red-600"}>
-                      <TrendValue value={holding.pl_pct} formatted={`${holding.pl_pct.toFixed(2)}%`} />
+                    <Td>
+                      <TrendValue
+                        value={holding.pl_pct}
+                        formatter={(val) => `${formatNumber(val)}%`}
+                      />
                     </Td>
                   </tr>
                 ))}
@@ -275,15 +281,20 @@ function Card({ title, value, subtitle }: { title: string; value: string; subtit
   );
 }
 
-function TrendValue({ value, formatted }: { value: number; formatted: string }) {
+function TrendValue({ value, formatter }: { value: number; formatter: (value: number) => string }) {
   const isPositive = value >= 0;
   const icon = isPositive ? "▲" : "▼";
+  const sign = isPositive ? "+" : "-";
+  const formatted = formatter(Math.abs(value));
+  const colorClass = isPositive ? "text-emerald-600" : "text-red-600";
 
   return (
-    <span className="inline-flex items-center gap-1 font-medium">
+    <span className={`inline-flex items-center gap-1 font-medium ${colorClass}`}>
       <span aria-hidden="true">{icon}</span>
       <span className="sr-only">{isPositive ? "Hausse" : "Baisse"} : </span>
-      <span>{formatted}</span>
+      <span>
+        {sign} {formatted}
+      </span>
     </span>
   );
 }
