@@ -36,6 +36,28 @@ def setup_logging() -> None:
                 "encoding": "utf-8",
             },
         },
+        "loggers": {
+            "uvicorn": {
+                "handlers": ["console", "file"],
+                "level": "INFO",
+                "propagate": True,
+            },
+            "uvicorn.error": {
+                "handlers": ["console", "file"],
+                "level": "INFO",
+                "propagate": True,
+            },
+            "uvicorn.access": {
+                "handlers": ["console", "file"],
+                "level": "INFO",
+                "propagate": True,
+            },
+            "uvicorn.asgi": {
+                "handlers": ["console", "file"],
+                "level": "INFO",
+                "propagate": True,
+            },
+        },
         "root": {
             "handlers": ["console", "file"],
             "level": "INFO",
