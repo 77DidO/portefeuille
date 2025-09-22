@@ -7,10 +7,12 @@ from sqlalchemy.orm import Session
 from app.models.holdings import Holding
 from app.models.snapshots import Snapshot
 from app.services.portfolio import compute_holdings
+from app.services.system_logs import record_log
 from app.utils.time import utc_now
 
 
 def run_snapshot(db: Session) -> Snapshot:
+    record_log(db, "INFO", "snapshots", "Recomputation started")
     compute_holdings.cache_clear()
     holdings, totals = compute_holdings(db)
     ts = utc_now()
@@ -48,4 +50,17 @@ def run_snapshot(db: Session) -> Snapshot:
             )
         )
     db.commit()
+    record_log(
+        db,
+        "INFO",
+        "snapshots",
+        "Snapshot updated",
+        meta={
+            "snapshot_id": snapshot.id,
+            "value_pea_eur": value_pea,
+            "value_crypto_eur": value_crypto,
+            "value_total_eur": value_total,
+            "pnl_total_eur": pnl_total,
+        },
+    )
     return snapshot
