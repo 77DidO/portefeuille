@@ -23,7 +23,7 @@ interface HistoryPoint {
 
 interface HistoryPointWithMeta extends HistoryPoint {
   id: string;
-  dateLabel: string;
+  chartLabel: string;
 }
 
 interface HoldingDetail {
@@ -95,7 +95,7 @@ export default function PositionDetailPage() {
     return detail.history.map((point, index) => ({
       ...point,
       id: point.id ?? `${point.ts}-${index}`,
-      dateLabel: formatDate(point.ts),
+      chartLabel: formatDate(point.ts),
     }));
   }, [detail]);
 
@@ -165,11 +165,13 @@ export default function PositionDetailPage() {
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={historyData}>
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="dateLabel" />
+                        <XAxis dataKey="chartLabel" />
                         <YAxis tickFormatter={(value) => `${Math.round(value / 100) / 10}k`} />
                         <Tooltip
                           formatter={(value: number) => formatCurrency(value)}
-                          labelFormatter={(label: string) => label}
+                          labelFormatter={(label: string, payload) =>
+                            formatDateTime((payload?.[0]?.payload as HistoryPointWithMeta | undefined)?.ts ?? label)
+                          }
                         />
                         <Line type="monotone" dataKey="market_value_eur" stroke="#6366f1" strokeWidth={2} dot={false} name="Valeur" />
                         <Line type="monotone" dataKey="pl_eur" stroke="#10b981" strokeWidth={2} dot={false} name="P&L" />
@@ -191,7 +193,7 @@ export default function PositionDetailPage() {
                       <tbody className="divide-y divide-slate-100">
                         {historyData.map((point) => (
                           <tr key={point.id}>
-                            <td className="px-4 py-2 text-slate-700">{formatDate(point.ts)}</td>
+                            <td className="px-4 py-2 text-slate-700">{formatDateTime(point.ts)}</td>
                             <td className="px-4 py-2 text-slate-700">{formatCurrency(point.market_price_eur)}</td>
                             <td className="px-4 py-2 text-slate-700">{formatCurrency(point.market_value_eur)}</td>
                             <td className="px-4 py-2 text-slate-700">{formatCurrency(point.invested_eur)}</td>
