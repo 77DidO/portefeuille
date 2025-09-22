@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from typing import AsyncGenerator
 
 import httpx
-from loguru import logger
 
 from app.core.config import settings
 from app.core.security import sign_external_ref
@@ -13,6 +13,9 @@ from app.services.system_logs import record_log
 
 BINANCE_REST = "https://api.binance.com"
 BINANCE_WS = "wss://stream.binance.com:9443/ws"
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass

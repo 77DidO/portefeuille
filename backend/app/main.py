@@ -12,12 +12,15 @@ from sqlalchemy.orm import Session
 
 from app.api import configuration, export, health, journal, portfolio, snapshots, transactions
 from app.core.config import settings
+from app.core.logging import setup_logging
 from app.db import base  # noqa: F401
 from app.db.migration import run_migrations
 from app.db.session import SessionLocal
 from app.models.transactions import Transaction
 from app.utils.time import PARIS_TZ
 from app.workers.snapshots import run_snapshot
+
+setup_logging()
 
 scheduler = AsyncIOScheduler(timezone=PARIS_TZ)
 app = FastAPI(title=settings.app_name)
