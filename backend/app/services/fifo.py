@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple
+from typing import Dict, Hashable, List, Tuple
 
 
 @dataclass
@@ -18,16 +18,22 @@ class AssetState:
 
 class FIFOPortfolio:
     def __init__(self) -> None:
-        self.assets: Dict[str, AssetState] = {}
+        self.assets: Dict[Hashable, AssetState] = {}
 
-    def _get_state(self, symbol: str) -> AssetState:
+    def _get_state(self, symbol: Hashable) -> AssetState:
         return self.assets.setdefault(symbol, AssetState())
 
-    def buy(self, symbol: str, quantity: float, total_cost_eur: float) -> None:
+    def buy(self, symbol: Hashable, quantity: float, total_cost_eur: float) -> None:
         state = self._get_state(symbol)
         state.lots.append(Lot(quantity=quantity, cost_basis=total_cost_eur))
 
-    def sell(self, symbol: str, quantity: float, total_proceeds_eur: float, fee_eur: float = 0.0) -> float:
+    def sell(
+        self,
+        symbol: Hashable,
+        quantity: float,
+        total_proceeds_eur: float,
+        fee_eur: float = 0.0,
+    ) -> float:
         state = self._get_state(symbol)
         qty_to_sell = quantity
         realized_pnl = 0.0
@@ -61,15 +67,15 @@ class FIFOPortfolio:
         state.realized_pnl += realized_pnl
         return realized_pnl
 
-    def dividend(self, symbol: str, amount_eur: float) -> None:
+    def dividend(self, symbol: Hashable, amount_eur: float) -> None:
         state = self._get_state(symbol)
         state.realized_pnl += amount_eur
 
-    def current_position(self, symbol: str) -> Tuple[float, float]:
+    def current_position(self, symbol: Hashable) -> Tuple[float, float]:
         state = self._get_state(symbol)
         total_qty = sum(lot.quantity for lot in state.lots)
         total_cost = sum(lot.cost_basis for lot in state.lots)
         return total_qty, total_cost
 
-    def as_dict(self) -> Dict[str, AssetState]:
+    def as_dict(self) -> Dict[Hashable, AssetState]:
         return self.assets

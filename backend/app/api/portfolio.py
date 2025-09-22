@@ -27,6 +27,7 @@ def get_holdings(db: Session = Depends(deps.get_db)) -> HoldingsResponse:
     holdings_raw, totals = compute_holdings(db)
     holdings = [
         HoldingResponse(
+            identifier=h.identifier,
             asset=h.asset,
             symbol_or_isin=h.symbol_or_isin,
             quantity=h.quantity,
@@ -38,6 +39,7 @@ def get_holdings(db: Session = Depends(deps.get_db)) -> HoldingsResponse:
             pl_pct=h.pl_pct,
             type_portefeuille=h.type_portefeuille,
             as_of=h.as_of,
+            account_id=h.account_id,
         )
         for h in holdings_raw
     ]
@@ -76,6 +78,7 @@ def get_holding_detail(
     ]
 
     return HoldingDetailResponse(
+        identifier=detail.identifier,
         asset=detail.asset,
         symbol_or_isin=detail.symbol_or_isin,
         quantity=detail.quantity,
@@ -87,6 +90,7 @@ def get_holding_detail(
         pl_pct=detail.pl_pct,
         type_portefeuille=detail.type_portefeuille,
         as_of=detail.as_of,
+        account_id=detail.account_id,
         history=history,
         realized_pnl_eur=detail.realized_pnl_eur,
         dividends_eur=detail.dividends_eur,

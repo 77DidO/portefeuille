@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 import json
 import re
@@ -25,6 +25,7 @@ from app.utils.time import utc_now
 
 @dataclass
 class HoldingView:
+    identifier: str
     asset: str
     symbol_or_isin: str | None
     quantity: float
@@ -36,6 +37,7 @@ class HoldingView:
     pl_pct: float
     type_portefeuille: str
     as_of: datetime
+    account_id: str | None = None
 
 
 @dataclass
@@ -51,10 +53,10 @@ class HoldingHistoryPointView:
 
 @dataclass
 class HoldingDetailView(HoldingView):
-    history: List[HoldingHistoryPointView]
-    realized_pnl_eur: float
-    dividends_eur: float
-    history_available: bool
+    history: List[HoldingHistoryPointView] = field(default_factory=list)
+    realized_pnl_eur: float = 0.0
+    dividends_eur: float = 0.0
+    history_available: bool = False
 
 
 _cache = TTLCache(maxsize=1, ttl=120)
@@ -103,6 +105,64 @@ def _contains_fiat_code(text: str) -> bool:
     upper_text = text.upper()
     tokens = re.findall(r"[A-Z]{3}", upper_text)
     return any(token in FIAT_CURRENCIES for token in tokens)
+
+
+PortfolioKey = Tuple[str, str, str]
+
+
+def _normalize_portfolio_type(value: str | None) -> str:
+    normalized = (value or "").strip().upper()
+    return normalized or "PEA"
+
+
+def _normalize_symbol(value: str | None) -> str:
+    return (value or "").strip().upper()
+
+
+def _normalize_account_id(value: str | None) -> str:
+    return (value or "").strip().upper()
+
+
+def _make_portfolio_key(
+    type_portefeuille: str | None,
+    symbol: str | None,
+    account_id: str | None,
+) -> PortfolioKey:
+    return (
+        _normalize_portfolio_type(type_portefeuille),
+        _normalize_symbol(symbol),
+        _normalize_account_id(account_id),
+    )
+
+
+def _build_identifier_from_key(key: PortfolioKey) -> str:
+    type_portefeuille, symbol, account_id = key
+    parts = [type_portefeuille]
+    if account_id:
+        parts.append(account_id)
+    parts.append(symbol)
+    return "::".join(parts)
+
+
+def _parse_identifier(identifier: str) -> Tuple[str, str | None, str | None]:
+    if not identifier:
+        return "", None, None
+
+    raw_parts = identifier.split("::")
+    parts = [part.strip() for part in raw_parts]
+
+    if len(parts) >= 3:
+        type_portefeuille = parts[0].upper()
+        account_id = parts[1].upper() or None
+        symbol = "::".join(parts[2:]).upper()
+        return symbol, type_portefeuille, account_id
+
+    if len(parts) == 2:
+        type_portefeuille = parts[0].upper()
+        symbol = parts[1].upper()
+        return symbol, type_portefeuille, None
+
+    return parts[0].upper(), None, None
 
 
 def _fetch_equity_price(symbol: str) -> float:
@@ -237,27 +297,40 @@ def get_market_price(symbol: str, type_portefeuille: str | None) -> float:
 def compute_holdings(db: Session) -> Tuple[List[HoldingView], Dict[str, float]]:
     txs: List[Transaction] = db.query(Transaction).order_by(Transaction.ts.asc(), Transaction.id.asc()).all()
     fifo = FIFOPortfolio()
-    portfolio_types: Dict[str, str] = {}
+    portfolio_types: Dict[PortfolioKey, str] = {}
+    symbol_labels: Dict[PortfolioKey, str] = {}
+    account_labels: Dict[PortfolioKey, str | None] = {}
     realized_total = 0.0
 
     for tx in txs:
-        symbol = (tx.symbol_or_isin or tx.asset or "").upper()
+        raw_symbol = (tx.symbol_or_isin or tx.asset or "").strip()
+        symbol = _normalize_symbol(raw_symbol or tx.asset)
+        portfolio_type = _normalize_portfolio_type(tx.type_portefeuille)
+        key = _make_portfolio_key(tx.type_portefeuille, raw_symbol or tx.asset, tx.account_id)
         total_eur = tx.total_eur
-        if symbol and tx.type_portefeuille:
-            portfolio_types[symbol] = tx.type_portefeuille.upper()
+        portfolio_types[key] = portfolio_type
+        if key not in symbol_labels or not symbol_labels[key]:
+            symbol_labels[key] = symbol
+        current_account = account_labels.get(key)
+        if current_account is None and tx.account_id is not None:
+            account_labels[key] = tx.account_id
+        elif key not in account_labels:
+            account_labels[key] = tx.account_id
 
-        if tx.operation.upper() == "BUY":
-            fifo.buy(symbol, tx.quantity, total_eur + tx.fee_eur)
-        elif tx.operation.upper() == "SELL":
+        operation = (tx.operation or "").upper()
+
+        if operation == "BUY":
+            fifo.buy(key, tx.quantity, total_eur + tx.fee_eur)
+        elif operation == "SELL":
             asset_label = (tx.asset or "").strip()
             symbol_label = (tx.symbol_or_isin or "").strip()
 
             if _contains_fiat_code(asset_label) or _contains_fiat_code(symbol_label):
                 realized_total += total_eur - tx.fee_eur
                 continue
-            realized_total += fifo.sell(symbol, tx.quantity, total_eur, fee_eur=tx.fee_eur)
-        elif tx.operation.upper() == "DIVIDEND":
-            fifo.dividend(symbol, total_eur - tx.fee_eur)
+            realized_total += fifo.sell(key, tx.quantity, total_eur, fee_eur=tx.fee_eur)
+        elif operation == "DIVIDEND":
+            fifo.dividend(key, total_eur - tx.fee_eur)
             realized_total += total_eur - tx.fee_eur
         else:
             # treat cash movements as realized adjustments but no holdings impact
@@ -266,23 +339,26 @@ def compute_holdings(db: Session) -> Tuple[List[HoldingView], Dict[str, float]]:
 
     as_of = utc_now()
     holdings: List[HoldingView] = []
-    for symbol in fifo.as_dict():
-        qty, cost = fifo.current_position(symbol)
+    for key in fifo.as_dict():
+        qty, cost = fifo.current_position(key)
         if qty <= 1e-12:
             continue
         try:
-            market_price = get_market_price(symbol, portfolio_types.get(symbol))
+            market_price = get_market_price(symbol_labels.get(key, key[1]), portfolio_types.get(key))
         except MarketPriceUnavailable:
             market_price = cost / qty if qty else 0.0
         market_value = market_price * qty
         invested = cost
         pl_latent = market_value - invested
         pl_pct = (pl_latent / invested * 100.0) if invested else 0.0
-        type_portefeuille = portfolio_types.get(symbol, "PEA")
+        type_portefeuille = portfolio_types.get(key, "PEA")
+        symbol_display = symbol_labels.get(key, key[1])
+        identifier = _build_identifier_from_key(key)
         holdings.append(
             HoldingView(
-                asset=symbol,
-                symbol_or_isin=symbol,
+                identifier=identifier,
+                asset=symbol_display,
+                symbol_or_isin=symbol_display,
                 quantity=qty,
                 pru_eur=invested / qty,
                 invested_eur=invested,
@@ -292,6 +368,7 @@ def compute_holdings(db: Session) -> Tuple[List[HoldingView], Dict[str, float]]:
                 pl_pct=pl_pct,
                 type_portefeuille=type_portefeuille,
                 as_of=as_of,
+                account_id=account_labels.get(key),
             )
         )
 
@@ -310,27 +387,55 @@ def compute_holding_detail(db: Session, identifier: str) -> HoldingDetailView:
         raise HoldingNotFound("Missing holding identifier")
 
     normalized = identifier.strip().upper()
+    symbol_hint, type_hint, account_hint = _parse_identifier(identifier)
     holdings, _ = compute_holdings(db)
-    try:
-        holding = next(
-            h
-            for h in holdings
-            if (h.symbol_or_isin or "").upper() == normalized or h.asset.upper() == normalized
-        )
-    except StopIteration as exc:
-        raise HoldingNotFound(f"Holding '{identifier}' not found") from exc
+    holding: HoldingView | None = None
 
-    history_rows = (
+    for candidate in holdings:
+        if candidate.identifier.upper() == normalized:
+            holding = candidate
+            break
+
+    if holding is None:
+        for candidate in holdings:
+            candidate_symbol = _normalize_symbol(candidate.symbol_or_isin or candidate.asset)
+            candidate_type = _normalize_portfolio_type(candidate.type_portefeuille)
+            candidate_account = _normalize_account_id(candidate.account_id)
+            if symbol_hint and candidate_symbol != symbol_hint:
+                continue
+            if type_hint and candidate_type != type_hint:
+                continue
+            if account_hint and candidate_account != account_hint:
+                continue
+            holding = candidate
+            break
+
+    if holding is None:
+        for candidate in holdings:
+            if (candidate.symbol_or_isin or "").upper() == normalized or candidate.asset.upper() == normalized:
+                holding = candidate
+                break
+
+    if holding is None:
+        raise HoldingNotFound(f"Holding '{identifier}' not found")
+
+    symbol_normalized = _normalize_symbol(holding.symbol_or_isin or holding.asset)
+    type_normalized = _normalize_portfolio_type(holding.type_portefeuille)
+    account_normalized = _normalize_account_id(holding.account_id)
+
+    history_query = (
         db.query(Holding)
         .filter(
             or_(
-                func.upper(Holding.symbol_or_isin) == normalized,
-                func.upper(Holding.asset) == normalized,
+                func.upper(Holding.symbol_or_isin) == symbol_normalized,
+                func.upper(Holding.asset) == symbol_normalized,
             )
         )
-        .order_by(Holding.as_of.asc())
-        .all()
+        .filter(func.upper(Holding.type_portefeuille) == type_normalized)
     )
+    if account_normalized:
+        history_query = history_query.filter(func.upper(Holding.account_id) == account_normalized)
+    history_rows = history_query.order_by(Holding.as_of.asc()).all()
 
     history = [
         HoldingHistoryPointView(
@@ -345,31 +450,34 @@ def compute_holding_detail(db: Session, identifier: str) -> HoldingDetailView:
         for row in history_rows
     ]
 
-    tx_rows = (
+    tx_query = (
         db.query(Transaction)
         .filter(
             or_(
-                func.upper(Transaction.symbol_or_isin) == normalized,
-                func.upper(Transaction.asset) == normalized,
+                func.upper(Transaction.symbol_or_isin) == symbol_normalized,
+                func.upper(Transaction.asset) == symbol_normalized,
             )
         )
-        .order_by(Transaction.ts.asc(), Transaction.id.asc())
-        .all()
+        .filter(func.upper(Transaction.type_portefeuille) == type_normalized)
     )
+    if account_normalized:
+        tx_query = tx_query.filter(func.upper(Transaction.account_id) == account_normalized)
+    tx_rows = tx_query.order_by(Transaction.ts.asc(), Transaction.id.asc()).all()
 
     fifo = FIFOPortfolio()
+    fifo_key = _make_portfolio_key(holding.type_portefeuille, holding.symbol_or_isin or holding.asset, holding.account_id)
     for tx in tx_rows:
         operation = (tx.operation or "").upper()
         if operation == "BUY":
-            fifo.buy(normalized, tx.quantity, tx.total_eur + tx.fee_eur)
+            fifo.buy(fifo_key, tx.quantity, tx.total_eur + tx.fee_eur)
         elif operation == "SELL":
-            fifo.sell(normalized, tx.quantity, tx.total_eur, fee_eur=tx.fee_eur)
+            fifo.sell(fifo_key, tx.quantity, tx.total_eur, fee_eur=tx.fee_eur)
         elif operation == "DIVIDEND":
-            fifo.dividend(normalized, tx.total_eur - tx.fee_eur)
+            fifo.dividend(fifo_key, tx.total_eur - tx.fee_eur)
         else:
-            fifo.dividend(normalized, tx.total_eur)
+            fifo.dividend(fifo_key, tx.total_eur)
 
-    state = fifo.as_dict().get(normalized)
+    state = fifo.as_dict().get(fifo_key)
     realized = state.realized_pnl if state else 0.0
     dividends = sum(
         (tx.total_eur - tx.fee_eur)
@@ -378,6 +486,7 @@ def compute_holding_detail(db: Session, identifier: str) -> HoldingDetailView:
     )
 
     return HoldingDetailView(
+        identifier=holding.identifier,
         asset=holding.asset,
         symbol_or_isin=holding.symbol_or_isin,
         quantity=holding.quantity,
@@ -389,6 +498,7 @@ def compute_holding_detail(db: Session, identifier: str) -> HoldingDetailView:
         pl_pct=holding.pl_pct,
         type_portefeuille=holding.type_portefeuille,
         as_of=holding.as_of,
+        account_id=holding.account_id,
         history=history,
         realized_pnl_eur=realized,
         dividends_eur=dividends,
