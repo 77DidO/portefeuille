@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 import json
@@ -20,6 +21,10 @@ from app.services import binance, euronext
 from app.db.session import SessionLocal
 from app.utils.settings_keys import QUOTE_ALIAS_SETTING_KEY
 from app.utils.time import utc_now
+from app.services.system_logs import record_log
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -123,6 +128,21 @@ def _contains_fiat_code(text: str) -> bool:
 
 
 PortfolioKey = Tuple[str, str, str]
+
+
+def _record_portfolio_log(level: str, message: str, meta: Dict[str, object] | None = None) -> None:
+    log_level = logging._nameToLevel.get(level.upper(), logging.INFO)
+    logger.log(log_level, message)
+
+    try:
+        with SessionLocal() as db:
+            record_log(db, level.upper(), "portfolio", message, meta=meta)
+    except Exception as exc:  # pragma: no cover - logging must not break processing
+        logger.warning(
+            "Failed to record portfolio log: %s",
+            exc,
+            extra={"meta": meta},
+        )
 
 
 def _normalize_portfolio_type(value: str | None) -> str:
@@ -440,25 +460,81 @@ def get_market_price(symbol: str, type_portefeuille: str | None) -> float:
     normalized_type = (type_portefeuille or "").upper()
     if normalized_type != "CRYPTO":
         for candidate in _iter_euronext_candidates(symbol, resolved_symbol):
+            meta = {
+                "symbol": symbol,
+                "resolved_symbol": resolved_symbol,
+                "source": "euronext",
+                "candidate": candidate,
+            }
+            _record_portfolio_log(
+                "INFO",
+                f"Fetching market price for {symbol} via Euronext candidate {candidate}",
+                meta,
+            )
             try:
                 price = euronext.fetch_price(candidate)
-            except euronext.EuronextAPIError:
+            except euronext.EuronextAPIError as exc:
+                _record_portfolio_log(
+                    "WARNING",
+                    f"Euronext price fetch failed for {symbol} candidate {candidate}: {exc}",
+                    meta,
+                )
                 continue
             else:
+                success_meta = {**meta, "price": price}
+                _record_portfolio_log(
+                    "INFO",
+                    f"Euronext price fetch succeeded for {symbol} candidate {candidate}",
+                    success_meta,
+                )
                 _price_cache[cache_key] = price
                 return price
 
     fetcher = _fetch_equity_price
     if normalized_type == "CRYPTO":
         fetcher = _fetch_crypto_price
+    else:
+        _record_portfolio_log(
+            "WARNING",
+            f"Falling back to secondary price source for {symbol}",
+            {
+                "symbol": symbol,
+                "resolved_symbol": resolved_symbol,
+                "source": fetcher.__name__,
+                "type_portefeuille": normalized_type,
+            },
+        )
+
+    attempt_meta = {
+        "symbol": symbol,
+        "resolved_symbol": resolved_symbol,
+        "source": fetcher.__name__,
+        "type_portefeuille": normalized_type,
+    }
+    _record_portfolio_log(
+        "INFO",
+        f"Fetching market price for {symbol} via {fetcher.__name__}",
+        attempt_meta,
+    )
 
     try:
         price = fetcher(resolved_symbol)
     except MarketPriceUnavailable:
+        _record_portfolio_log(
+            "ERROR",
+            f"Market price unavailable for {symbol} via {fetcher.__name__}",
+            attempt_meta,
+        )
         if cache_key in _price_cache:
             return _price_cache[cache_key]
         raise
     else:
+        success_meta = {**attempt_meta, "price": price}
+        _record_portfolio_log(
+            "INFO",
+            f"Price fetched for {symbol} via {fetcher.__name__}",
+            success_meta,
+        )
         _price_cache[cache_key] = price
         return price
 
@@ -673,3 +749,4 @@ def compute_holding_detail(db: Session, identifier: str) -> HoldingDetailView:
         dividends_eur=dividends,
         history_available=bool(history),
     )
+
