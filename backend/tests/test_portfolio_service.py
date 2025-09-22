@@ -313,6 +313,49 @@ def test_get_market_price_falls_back_to_yahoo_with_isin(monkeypatch):
     assert yahoo_calls == ["MC.PA"]
 
 
+def test_get_market_price_adjusts_yahoo_symbol_for_isin(monkeypatch):
+    _clear_portfolio_caches()
+    portfolio.clear_quote_alias_cache()
+
+    def fake_resolve(symbol: str, type_portefeuille: str | None) -> str:
+        return "FR0000123456"
+
+    def fake_iter(original: str, resolved: str) -> tuple[str, ...]:
+        return ("MC-FR0000123456-XPAR",)
+
+    def failing_fetch(issue: str) -> float:
+        raise portfolio.euronext.EuronextAPIError("boom")
+
+    search_calls: list[str] = []
+
+    def fake_search(isin: str) -> str | None:
+        search_calls.append(isin)
+        return "MC.PA"
+
+    yahoo_calls: list[str] = []
+
+    def fake_yahoo(symbol: str) -> float:
+        yahoo_calls.append(symbol)
+        assert symbol == "MC.PA"
+        return 109.0
+
+    def identity_derive(symbol: str) -> str:
+        return symbol
+
+    monkeypatch.setattr(portfolio, "resolve_quote_symbol", fake_resolve)
+    monkeypatch.setattr(portfolio, "_iter_euronext_candidates", fake_iter)
+    monkeypatch.setattr(portfolio.euronext, "fetch_price", failing_fetch)
+    monkeypatch.setattr(portfolio, "_search_symbol_for_isin", fake_search)
+    monkeypatch.setattr(portfolio, "_fetch_equity_price", fake_yahoo)
+    monkeypatch.setattr(portfolio, "_derive_equity_fetch_symbol", identity_derive)
+
+    price = portfolio.get_market_price("FR0000123456", "CTO")
+
+    assert price == pytest.approx(109.0)
+    assert search_calls == ["FR0000123456"]
+    assert yahoo_calls == ["MC.PA"]
+
+
 @pytest.mark.parametrize("account_ids", [(None, None), ("ACC-PEA", "ACC-CTO")])
 def test_compute_holdings_separates_same_symbol(monkeypatch, account_ids):
     engine, db = _create_session()
