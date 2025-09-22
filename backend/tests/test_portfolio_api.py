@@ -292,3 +292,66 @@ def test_history_endpoint_includes_dividends(monkeypatch: pytest.MonkeyPatch) ->
         portfolio.compute_holdings.cache_clear()
         db.close()
         engine.dispose()
+
+
+def test_holdings_endpoint_reuses_cached_holdings(monkeypatch: pytest.MonkeyPatch) -> None:
+    engine, SessionLocal = _create_session()
+    db = SessionLocal()
+    try:
+        portfolio._price_cache.clear()
+        portfolio.compute_holdings.cache_clear()
+
+        db.add_all(
+            [
+                Transaction(
+                    account_id="ACC-123",
+                    source="TEST",
+                    type_portefeuille="PEA",
+                    operation="BUY",
+                    asset="AAPL",
+                    symbol_or_isin="AAPL",
+                    quantity=1.0,
+                    unit_price_eur=100.0,
+                    fee_eur=0.0,
+                    total_eur=100.0,
+                    ts=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                    notes=None,
+                    external_ref="tx-1",
+                )
+            ]
+        )
+        db.commit()
+
+        def override_get_db():
+            session = SessionLocal()
+            try:
+                yield session
+            finally:
+                session.close()
+
+        app = FastAPI()
+        app.include_router(portfolio_api.router)
+        app.dependency_overrides[deps.get_db] = override_get_db
+
+        price_calls: list[tuple[str, str | None]] = []
+
+        def fake_get_market_price(symbol: str, type_portefeuille: str | None) -> float:
+            price_calls.append((symbol, type_portefeuille))
+            return 123.0
+
+        monkeypatch.setattr(portfolio, "get_market_price", fake_get_market_price)
+
+        client = TestClient(app)
+
+        response1 = client.get("/portfolio/holdings")
+        assert response1.status_code == 200
+
+        response2 = client.get("/portfolio/holdings")
+        assert response2.status_code == 200
+
+        assert price_calls == [("AAPL", "PEA")]
+    finally:
+        portfolio._price_cache.clear()
+        portfolio.compute_holdings.cache_clear()
+        db.close()
+        engine.dispose()
