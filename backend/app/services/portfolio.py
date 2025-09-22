@@ -17,7 +17,7 @@ from app.models.transactions import Transaction
 from app.models.holdings import Holding
 from app.models.settings import Setting
 from app.services.fifo import FIFOPortfolio
-from app.services import binance
+from app.services import binance, euronext
 from app.db.session import SessionLocal
 from app.utils.settings_keys import QUOTE_ALIAS_SETTING_KEY
 from app.utils.time import utc_now
@@ -66,6 +66,8 @@ _quote_alias_cache: TTLCache[str, Dict[str, str]] = TTLCache(maxsize=1, ttl=300)
 
 _ISIN_REGEX = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
 _QUOTE_ALIAS_CACHE_KEY = "aliases"
+_EURONEXT_SUFFIXES = {"PA", "PAR", "AS", "AMS", "BR", "BRU", "LS", "LIS", "MI", "MIL", "IR", "DU"}
+_EURONEXT_MICS = {"XPAR", "XAMS", "XBRU", "XLIS", "XMIL", "XDUB"}
 
 
 class MarketPriceUnavailable(RuntimeError):
@@ -248,11 +250,26 @@ def clear_quote_alias_cache() -> None:
     _quote_alias_cache.clear()
 
 
+_EURONEXT_COMBINED_PATTERN = re.compile(
+    r"^(?P<symbol>[A-Z0-9]+)[-_/](?P<isin>[A-Z]{2}[A-Z0-9]{9}[0-9])(?:[-_/](?P<mic>X[A-Z0-9]{3}|[A-Z]{2}))?$"
+)
+_EURONEXT_ISIN_MARKET_PATTERN = re.compile(
+    r"^(?P<isin>[A-Z]{2}[A-Z0-9]{9}[0-9])[-_/](?P<mic>X[A-Z0-9]{3}|[A-Z]{2})$"
+)
+
+
 def resolve_quote_symbol(symbol: str, type_portefeuille: str | None) -> str:
     if not symbol:
         return ""
 
     normalized = symbol.strip().upper()
+    match = _EURONEXT_COMBINED_PATTERN.match(normalized)
+    if match:
+        normalized = match.group("isin")
+    else:
+        market_match = _EURONEXT_ISIN_MARKET_PATTERN.match(normalized)
+        if market_match:
+            normalized = market_match.group("isin")
     if (type_portefeuille or "").upper() == "CRYPTO":
         return normalized
 
@@ -274,12 +291,60 @@ def resolve_quote_symbol(symbol: str, type_portefeuille: str | None) -> str:
     return normalized
 
 
+def _is_euronext_identifier(value: str) -> bool:
+    if not value:
+        return False
+    normalized = value.strip().upper()
+    if not normalized:
+        return False
+    if _ISIN_REGEX.match(normalized):
+        return True
+
+    for sep in (".", "-", ":", "@", "/"):
+        if sep in normalized:
+            suffix = normalized.rsplit(sep, 1)[1]
+            if suffix in _EURONEXT_SUFFIXES or suffix in _EURONEXT_MICS:
+                return True
+
+    return False
+
+
+def _iter_euronext_candidates(original: str, resolved: str) -> Tuple[str, ...]:
+    candidates = []
+    seen = set()
+    for candidate in (original, resolved):
+        if not candidate:
+            continue
+        normalized = candidate.strip()
+        if not normalized:
+            continue
+        upper = normalized.upper()
+        if not _is_euronext_identifier(upper):
+            continue
+        if upper in seen:
+            continue
+        seen.add(upper)
+        candidates.append(normalized)
+    return tuple(candidates)
+
+
 def get_market_price(symbol: str, type_portefeuille: str | None) -> float:
     resolved_symbol = resolve_quote_symbol(symbol, type_portefeuille)
     cache_key = (resolved_symbol.upper(), (type_portefeuille or "").upper())
 
+    normalized_type = (type_portefeuille or "").upper()
+    if normalized_type != "CRYPTO":
+        for candidate in _iter_euronext_candidates(symbol, resolved_symbol):
+            try:
+                price = euronext.fetch_price(candidate)
+            except euronext.EuronextAPIError:
+                continue
+            else:
+                _price_cache[cache_key] = price
+                return price
+
     fetcher = _fetch_equity_price
-    if (type_portefeuille or "").upper() == "CRYPTO":
+    if normalized_type == "CRYPTO":
         fetcher = _fetch_crypto_price
 
     try:

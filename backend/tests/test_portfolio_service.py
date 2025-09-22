@@ -50,6 +50,69 @@ def _add_transaction(
     db.add(tx)
 
 
+def _clear_portfolio_caches():
+    portfolio._price_cache.clear()
+    portfolio.compute_holdings.cache_clear()
+
+
+def test_get_market_price_prefers_euronext(monkeypatch):
+    _clear_portfolio_caches()
+
+    resolved_calls: list[tuple[str, str | None]] = []
+
+    def fake_resolve(symbol: str, type_portefeuille: str | None) -> str:
+        resolved_calls.append((symbol, type_portefeuille))
+        return "MC.PA"
+
+    fetch_calls: list[str] = []
+
+    def fake_fetch(symbol: str) -> float:
+        fetch_calls.append(symbol)
+        return 42.0
+
+    def fail_yahoo(symbol: str) -> float:
+        raise AssertionError("Yahoo fetch should not be used when Euronext succeeds")
+
+    monkeypatch.setattr(portfolio, "resolve_quote_symbol", fake_resolve)
+    monkeypatch.setattr(portfolio.euronext, "fetch_price", fake_fetch)
+    monkeypatch.setattr(portfolio, "_fetch_equity_price", fail_yahoo)
+
+    price = portfolio.get_market_price("FR0000123456", "PEA")
+
+    assert price == pytest.approx(42.0)
+    assert resolved_calls == [("FR0000123456", "PEA")]
+    assert fetch_calls == ["FR0000123456"]
+
+
+def test_get_market_price_falls_back_to_yahoo(monkeypatch):
+    _clear_portfolio_caches()
+
+    def fake_resolve(symbol: str, type_portefeuille: str | None) -> str:
+        return symbol
+
+    fetch_calls: list[str] = []
+
+    def failing_fetch(symbol: str) -> float:
+        fetch_calls.append(symbol)
+        raise portfolio.euronext.EuronextAPIError("boom")
+
+    yahoo_calls: list[str] = []
+
+    def fake_yahoo(symbol: str) -> float:
+        yahoo_calls.append(symbol)
+        return 84.0
+
+    monkeypatch.setattr(portfolio, "resolve_quote_symbol", fake_resolve)
+    monkeypatch.setattr(portfolio.euronext, "fetch_price", failing_fetch)
+    monkeypatch.setattr(portfolio, "_fetch_equity_price", fake_yahoo)
+
+    price = portfolio.get_market_price("MC.PA", "CTO")
+
+    assert price == pytest.approx(84.0)
+    assert fetch_calls == ["MC.PA"]
+    assert yahoo_calls == ["MC.PA"]
+
+
 @pytest.mark.parametrize("account_ids", [(None, None), ("ACC-PEA", "ACC-CTO")])
 def test_compute_holdings_separates_same_symbol(monkeypatch, account_ids):
     engine, db = _create_session()
