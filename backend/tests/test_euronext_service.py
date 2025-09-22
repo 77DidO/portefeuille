@@ -48,8 +48,9 @@ def _clear_cache():
     euronext.clear_cache()
 
 
-def test_fetch_price_by_isin(monkeypatch):
-    expected_params = {"isin": "FR0000123456"}
+def test_fetch_price_by_issue(monkeypatch):
+    issue = "MC-FR0000123456-XPAR"
+    expected_params = {"issue": issue}
     dummy_client = DummyClient(
         euronext._API_URL,  # type: ignore[attr-defined]
         expected_params,
@@ -57,18 +58,19 @@ def test_fetch_price_by_isin(monkeypatch):
     )
     monkeypatch.setattr(euronext.httpx, "Client", lambda *args, **kwargs: dummy_client)
 
-    price = euronext.fetch_price("fr0000123456")
+    price = euronext.fetch_price(issue.lower())
     assert price == pytest.approx(123.45)
     assert dummy_client.calls == [(euronext._API_URL, expected_params)]  # type: ignore[attr-defined]
 
     # ensure cache is used on subsequent calls
-    price_again = euronext.fetch_price("FR0000123456")
+    price_again = euronext.fetch_price(issue)
     assert price_again == pytest.approx(123.45)
     assert len(dummy_client.calls) == 1
 
 
-def test_fetch_price_by_symbol(monkeypatch):
-    expected_params = {"symbol": "MC", "mic": "XPAR"}
+def test_fetch_price_by_issue_without_data_wrapper(monkeypatch):
+    issue = "ORA-FR0000133308-XPAR"
+    expected_params = {"issue": issue}
     dummy_client = DummyClient(
         euronext._API_URL,  # type: ignore[attr-defined]
         expected_params,
@@ -76,30 +78,32 @@ def test_fetch_price_by_symbol(monkeypatch):
     )
     monkeypatch.setattr(euronext.httpx, "Client", lambda *args, **kwargs: dummy_client)
 
-    price = euronext.fetch_price("mc.pa")
+    price = euronext.fetch_price(issue)
     assert price == pytest.approx(456.78)
     assert dummy_client.calls == [(euronext._API_URL, expected_params)]  # type: ignore[attr-defined]
 
 
 def test_fetch_price_rejects_non_eur_currency(monkeypatch):
+    issue = "MC-FR0000123456-XPAR"
     dummy_client = DummyClient(
         euronext._API_URL,  # type: ignore[attr-defined]
-        {"symbol": "MC", "mic": "XPAR"},
+        {"issue": issue},
         DummyResponse({"data": {"lastPrice": 10.0, "currency": "USD"}}),
     )
     monkeypatch.setattr(euronext.httpx, "Client", lambda *args, **kwargs: dummy_client)
 
     with pytest.raises(euronext.EuronextAPIError):
-        euronext.fetch_price("MC.PA")
+        euronext.fetch_price(issue)
 
 
 def test_fetch_price_http_error(monkeypatch):
+    issue = "MC-FR0000123456-XPAR"
     dummy_client = DummyClient(
         euronext._API_URL,  # type: ignore[attr-defined]
-        {"isin": "FR0000123456"},
+        {"issue": issue},
         DummyResponse({"data": {"lastPrice": 10.0}}, raise_error=httpx.HTTPError("boom")),
     )
     monkeypatch.setattr(euronext.httpx, "Client", lambda *args, **kwargs: dummy_client)
 
     with pytest.raises(euronext.EuronextAPIError):
-        euronext.fetch_price("FR0000123456")
+        euronext.fetch_price(issue)

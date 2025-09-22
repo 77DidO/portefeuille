@@ -66,8 +66,21 @@ _quote_alias_cache: TTLCache[str, Dict[str, str]] = TTLCache(maxsize=1, ttl=300)
 
 _ISIN_REGEX = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
 _QUOTE_ALIAS_CACHE_KEY = "aliases"
-_EURONEXT_SUFFIXES = {"PA", "PAR", "AS", "AMS", "BR", "BRU", "LS", "LIS", "MI", "MIL", "IR", "DU"}
 _EURONEXT_MICS = {"XPAR", "XAMS", "XBRU", "XLIS", "XMIL", "XDUB"}
+_EURONEXT_SUFFIX_TO_MIC = {
+    "PA": "XPAR",
+    "PAR": "XPAR",
+    "AS": "XAMS",
+    "AMS": "XAMS",
+    "BR": "XBRU",
+    "BRU": "XBRU",
+    "LS": "XLIS",
+    "LIS": "XLIS",
+    "MI": "XMIL",
+    "MIL": "XMIL",
+    "IR": "XDUB",
+    "DU": "XDUB",
+}
 
 
 class MarketPriceUnavailable(RuntimeError):
@@ -256,6 +269,9 @@ _EURONEXT_COMBINED_PATTERN = re.compile(
 _EURONEXT_ISIN_MARKET_PATTERN = re.compile(
     r"^(?P<isin>[A-Z]{2}[A-Z0-9]{9}[0-9])[-_/](?P<mic>X[A-Z0-9]{3}|[A-Z]{2})$"
 )
+_EURONEXT_ISSUE_PATTERN = re.compile(
+    r"^(?P<symbol>[A-Z0-9]+)[-_/](?P<isin>[A-Z]{2}[A-Z0-9]{9}[0-9])[-_/](?P<mic>X[A-Z0-9]{3})$"
+)
 
 
 def resolve_quote_symbol(symbol: str, type_portefeuille: str | None) -> str:
@@ -291,41 +307,110 @@ def resolve_quote_symbol(symbol: str, type_portefeuille: str | None) -> str:
     return normalized
 
 
-def _is_euronext_identifier(value: str) -> bool:
+def _normalize_mic(value: str | None) -> str | None:
     if not value:
-        return False
-    normalized = value.strip().upper()
-    if not normalized:
-        return False
-    if _ISIN_REGEX.match(normalized):
-        return True
+        return None
+    upper = value.strip().upper()
+    if upper in _EURONEXT_MICS:
+        return upper
+    return _EURONEXT_SUFFIX_TO_MIC.get(upper)
 
-    for sep in (".", "-", ":", "@", "/"):
-        if sep in normalized:
-            suffix = normalized.rsplit(sep, 1)[1]
-            if suffix in _EURONEXT_SUFFIXES or suffix in _EURONEXT_MICS:
-                return True
 
-    return False
+def _normalize_issue(symbol: str, isin: str, mic: str) -> str:
+    return f"{symbol.strip().upper()}-{isin.strip().upper()}-{mic.strip().upper()}"
+
+
+def _extract_symbol_mic(candidate: str) -> Tuple[str, str] | None:
+    for sep in ("-", ".", ":", "@", "/"):
+        if sep in candidate:
+            base, suffix = candidate.rsplit(sep, 1)
+            base = base.strip().upper()
+            mic = _normalize_mic(suffix)
+            if base and mic:
+                return base, mic
+    return None
 
 
 def _iter_euronext_candidates(original: str, resolved: str) -> Tuple[str, ...]:
-    candidates = []
-    seen = set()
-    for candidate in (original, resolved):
-        if not candidate:
+    issues: list[str] = []
+    seen_issues: set[str] = set()
+    isins: list[str] = []
+    seen_isins: set[str] = set()
+    symbol_mics: list[Tuple[str, str]] = []
+    seen_symbol_mics: set[Tuple[str, str]] = set()
+
+    def add_issue(symbol: str, isin: str, mic: str) -> None:
+        issue = _normalize_issue(symbol, isin, mic)
+        if issue not in seen_issues:
+            seen_issues.add(issue)
+            issues.append(issue)
+
+    def add_isin(value: str) -> None:
+        upper = value.strip().upper()
+        if upper and _ISIN_REGEX.match(upper) and upper not in seen_isins:
+            seen_isins.add(upper)
+            isins.append(upper)
+
+    def add_symbol_mic(symbol: str, mic: str) -> None:
+        key = (symbol.strip().upper(), mic.strip().upper())
+        if key[0] and key[1] and key not in seen_symbol_mics:
+            seen_symbol_mics.add(key)
+            symbol_mics.append(key)
+
+    for raw_candidate in (original, resolved):
+        if not raw_candidate:
             continue
-        normalized = candidate.strip()
+        normalized = raw_candidate.strip().upper()
         if not normalized:
             continue
-        upper = normalized.upper()
-        if not _is_euronext_identifier(upper):
+
+        issue_match = _EURONEXT_ISSUE_PATTERN.match(normalized)
+        if issue_match:
+            add_issue(
+                issue_match.group("symbol"),
+                issue_match.group("isin"),
+                issue_match.group("mic"),
+            )
             continue
-        if upper in seen:
+
+        combined_match = _EURONEXT_COMBINED_PATTERN.match(normalized)
+        if combined_match:
+            add_isin(combined_match.group("isin"))
+            mic_value = combined_match.group("mic")
+            if mic_value:
+                mic = _normalize_mic(mic_value)
+                if mic:
+                    add_issue(combined_match.group("symbol"), combined_match.group("isin"), mic)
+                    continue
+            symbol = combined_match.group("symbol")
+            if symbol:
+                symbol_mic = _extract_symbol_mic(symbol)
+                if symbol_mic:
+                    add_symbol_mic(*symbol_mic)
             continue
-        seen.add(upper)
-        candidates.append(normalized)
-    return tuple(candidates)
+
+        market_match = _EURONEXT_ISIN_MARKET_PATTERN.match(normalized)
+        if market_match:
+            mic = _normalize_mic(market_match.group("mic"))
+            if mic:
+                add_isin(market_match.group("isin"))
+                for symbol, existing_mic in symbol_mics:
+                    if existing_mic == mic:
+                        add_issue(symbol, market_match.group("isin"), mic)
+                continue
+
+        symbol_mic = _extract_symbol_mic(normalized)
+        if symbol_mic:
+            add_symbol_mic(*symbol_mic)
+            continue
+
+        add_isin(normalized)
+
+    for symbol, mic in symbol_mics:
+        for isin in isins:
+            add_issue(symbol, isin, mic)
+
+    return tuple(issues)
 
 
 def get_market_price(symbol: str, type_portefeuille: str | None) -> float:

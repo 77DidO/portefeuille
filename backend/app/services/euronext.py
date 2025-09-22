@@ -10,21 +10,6 @@ __all__ = ["EuronextAPIError", "fetch_price", "clear_cache"]
 
 _API_URL = "https://live.euronext.com/en/ajax/getLiveData/issue"
 _CACHE: TTLCache[str, float] = TTLCache(maxsize=256, ttl=300)
-_ISIN_REGEX = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
-_SUFFIX_TO_MIC = {
-    "PA": "XPAR",
-    "PAR": "XPAR",
-    "AS": "XAMS",
-    "AMS": "XAMS",
-    "BR": "XBRU",
-    "BRU": "XBRU",
-    "LS": "XLIS",
-    "LIS": "XLIS",
-    "MI": "XMIL",
-    "MIL": "XMIL",
-    "IR": "XDUB",
-    "DU": "XDUB",
-}
 _EURONEXT_MICS = {
     "XPAR",
     "XAMS",
@@ -33,6 +18,9 @@ _EURONEXT_MICS = {
     "XMIL",
     "XDUB",
 }
+_ISSUE_REGEX = re.compile(
+    r"^(?P<symbol>[A-Z0-9]+)-(?P<isin>[A-Z]{2}[A-Z0-9]{9}[0-9])-(?P<mic>X[A-Z0-9]{3})$"
+)
 
 
 class EuronextAPIError(RuntimeError):
@@ -43,39 +31,24 @@ def _normalize(value: str | None) -> str:
     return (value or "").strip().upper()
 
 
-def _split_symbol(symbol: str) -> Tuple[str, str | None]:
-    for sep in (".", "-", ":", "@", "/"):
-        if sep in symbol:
-            base, suffix = symbol.rsplit(sep, 1)
-            return base, suffix
-    return symbol, None
-
-
-def _resolve_params(identifier: str) -> Tuple[Dict[str, str], str]:
+def _resolve_params(identifier: str) -> Tuple[Dict[str, str], str, Tuple[str, ...]]:
     normalized = _normalize(identifier)
     if not normalized:
         raise EuronextAPIError("Missing Euronext identifier")
 
-    if _ISIN_REGEX.match(normalized):
-        return {"isin": normalized}, normalized
+    issue_match = _ISSUE_REGEX.match(normalized)
+    if not issue_match:
+        raise EuronextAPIError(f"Unsupported Euronext identifier '{identifier}'")
 
-    symbol, suffix = _split_symbol(normalized)
-    symbol = _normalize(symbol)
-    if not symbol or suffix is None:
-        raise EuronextAPIError(f"Unsupported Euronext symbol '{identifier}'")
+    symbol = issue_match.group("symbol")
+    isin = issue_match.group("isin")
+    mic = issue_match.group("mic")
 
-    suffix = suffix.strip().upper()
-    mic = None
-    if suffix in _EURONEXT_MICS:
-        mic = suffix
-    else:
-        mic = _SUFFIX_TO_MIC.get(suffix)
+    if mic not in _EURONEXT_MICS:
+        raise EuronextAPIError(f"Unknown Euronext market '{mic}' for '{identifier}'")
 
-    if not mic:
-        raise EuronextAPIError(f"Unknown Euronext market suffix '{suffix}' for '{identifier}'")
-
-    canonical_key = f"{symbol}@{mic}"
-    return {"symbol": symbol, "mic": mic}, canonical_key
+    issue = f"{symbol}-{isin}-{mic}"
+    return {"issue": issue}, issue, ()
 
 
 def _extract_price(payload: Dict[str, object]) -> float:
@@ -108,10 +81,10 @@ def _extract_price(payload: Dict[str, object]) -> float:
     return price_value
 
 
-def fetch_price(isin_or_symbol: str) -> float:
-    """Return the latest price in EUR for the given ISIN or Euronext symbol."""
+def fetch_price(identifier: str) -> float:
+    """Return the latest price in EUR for the given Euronext issue identifier."""
 
-    normalized = _normalize(isin_or_symbol)
+    normalized = _normalize(identifier)
     if not normalized:
         raise EuronextAPIError("Missing Euronext identifier")
 
@@ -120,7 +93,7 @@ def fetch_price(isin_or_symbol: str) -> float:
     except KeyError:
         pass
 
-    params, cache_key = _resolve_params(normalized)
+    params, cache_key, aliases = _resolve_params(normalized)
 
     try:
         with httpx.Client(timeout=10.0) as client:
@@ -136,6 +109,8 @@ def fetch_price(isin_or_symbol: str) -> float:
 
     _CACHE[normalized] = price_value
     _CACHE[cache_key] = price_value
+    for alias in aliases:
+        _CACHE[alias] = price_value
     return price_value
 
 
