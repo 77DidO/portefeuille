@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class HoldingBase(BaseModel):
@@ -39,7 +39,14 @@ class HoldingHistoryPoint(BaseModel):
 
 
 class HoldingDetailResponse(HoldingResponse):
-    history: List[HoldingHistoryPoint]
+    history: List[HoldingHistoryPoint] = Field(
+        ...,  # type: ignore[arg-type]
+        description=(
+            "Chronological history for the holding. The list is sorted by timestamp "
+            "and may include synthetic points derived from transactions when "
+            "snapshot data is unavailable."
+        ),
+    )
     realized_pnl_eur: float
     dividends_eur: float
     history_available: bool

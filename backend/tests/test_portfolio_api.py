@@ -206,7 +206,132 @@ def test_history_endpoint_includes_legacy_snapshots(monkeypatch: pytest.MonkeyPa
                 parsed = parsed.replace(tzinfo=timezone.utc)
             parsed_history.append(parsed)
 
-        assert parsed_history == [legacy_ts, blank_ts, current_ts]
+        expected_tx_ts = tx.ts
+        if expected_tx_ts.tzinfo is None:
+            expected_tx_ts = expected_tx_ts.replace(tzinfo=timezone.utc)
+        assert parsed_history == [legacy_ts, expected_tx_ts, blank_ts, current_ts]
+    finally:
+        portfolio.compute_holdings.cache_clear()
+        db.close()
+        engine.dispose()
+
+
+def test_history_endpoint_includes_transaction_points(monkeypatch: pytest.MonkeyPatch) -> None:
+    engine, SessionLocal = _create_session()
+    db = SessionLocal()
+    try:
+        portfolio.compute_holdings.cache_clear()
+
+        tx1_ts = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        tx2_ts = datetime(2024, 1, 10, tzinfo=timezone.utc)
+        tx3_ts = datetime(2024, 2, 1, tzinfo=timezone.utc)
+        snapshot_ts = datetime(2024, 3, 1, tzinfo=timezone.utc)
+
+        transactions = [
+            Transaction(
+                account_id="ACC-456",
+                source="TEST",
+                type_portefeuille="PEA",
+                operation="BUY",
+                asset="MSFT",
+                symbol_or_isin="MSFT",
+                quantity=1.0,
+                unit_price_eur=100.0,
+                fee_eur=1.0,
+                total_eur=100.0,
+                ts=tx1_ts,
+                notes=None,
+                external_ref="tx-1",
+            ),
+            Transaction(
+                account_id="ACC-456",
+                source="TEST",
+                type_portefeuille="PEA",
+                operation="BUY",
+                asset="MSFT",
+                symbol_or_isin="MSFT",
+                quantity=1.0,
+                unit_price_eur=110.0,
+                fee_eur=1.0,
+                total_eur=110.0,
+                ts=tx2_ts,
+                notes=None,
+                external_ref="tx-2",
+            ),
+            Transaction(
+                account_id="ACC-456",
+                source="TEST",
+                type_portefeuille="PEA",
+                operation="SELL",
+                asset="MSFT",
+                symbol_or_isin="MSFT",
+                quantity=0.5,
+                unit_price_eur=120.0,
+                fee_eur=0.5,
+                total_eur=60.0,
+                ts=tx3_ts,
+                notes=None,
+                external_ref="tx-3",
+            ),
+        ]
+
+        db.add_all(transactions)
+        db.commit()
+
+        db.add(
+            Holding(
+                account_id="ACC-456",
+                asset="MSFT",
+                symbol_or_isin="MSFT",
+                quantity=1.5,
+                pru_eur=161.5 / 1.5,
+                invested_eur=161.5,
+                market_price_eur=130.0,
+                market_value_eur=195.0,
+                pl_eur=33.5,
+                pl_pct=33.5 / 161.5 * 100.0,
+                as_of=snapshot_ts,
+                type_portefeuille="PEA",
+            )
+        )
+        db.commit()
+
+        def override_get_db():
+            session = SessionLocal()
+            try:
+                yield session
+            finally:
+                session.close()
+
+        app = FastAPI()
+        app.include_router(portfolio_api.router)
+        app.dependency_overrides[deps.get_db] = override_get_db
+
+        def fake_get_market_price(symbol: str, type_portefeuille: str | None) -> float:
+            return 130.0
+
+        monkeypatch.setattr(portfolio, "get_market_price", fake_get_market_price)
+
+        client = TestClient(app)
+
+        holdings_response = client.get("/portfolio/holdings")
+        assert holdings_response.status_code == 200
+        holdings_payload = holdings_response.json()["holdings"]
+        assert len(holdings_payload) == 1
+        identifier = holdings_payload[0]["identifier"]
+
+        detail_response = client.get(f"/portfolio/holdings/{identifier}")
+        assert detail_response.status_code == 200
+        history = detail_response.json()["history"]
+
+        parsed_history = []
+        for point in history:
+            parsed = datetime.fromisoformat(point["ts"])
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            parsed_history.append(parsed)
+
+        assert parsed_history == [tx1_ts, tx2_ts, tx3_ts, snapshot_ts]
     finally:
         portfolio.compute_holdings.cache_clear()
         db.close()
