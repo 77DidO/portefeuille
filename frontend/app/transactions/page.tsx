@@ -273,8 +273,8 @@ export default function TransactionsPage() {
             </div>
           </div>
           {hasTransactions ? (
-            <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end">
-              <div className="flex-1">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-4">
+              <div className="flex-1 min-w-[160px]">
                 <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Source
                 </label>
@@ -291,7 +291,7 @@ export default function TransactionsPage() {
                   ))}
                 </select>
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-[160px]">
                 <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Type de portefeuille
                 </label>
@@ -308,7 +308,7 @@ export default function TransactionsPage() {
                   ))}
                 </select>
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-[160px]">
                 <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Actif
                 </label>
@@ -325,7 +325,7 @@ export default function TransactionsPage() {
                   ))}
                 </select>
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-[160px]">
                 <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Opération
                 </label>
@@ -345,7 +345,7 @@ export default function TransactionsPage() {
               {filtersActive ? (
                 <button
                   type="button"
-                  className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                  className="w-full rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 sm:w-auto sm:self-end"
                   onClick={() => {
                     setSourceFilter("");
                     setTypeFilter("");
@@ -369,10 +369,10 @@ export default function TransactionsPage() {
                 <thead className="bg-slate-50">
                   <tr>
                     <Th>Date</Th>
-                    <Th>Source</Th>
-                    <Th>Type</Th>
-                    <Th>Opération</Th>
-                    <Th>Actif</Th>
+                    <Th filterValue={sourceFilter || "Toutes"}>Source</Th>
+                    <Th filterValue={typeFilter ? typeFilter.toUpperCase() : "Tous"}>Type</Th>
+                    <Th filterValue={operationFilter || "Toutes"}>Opération</Th>
+                    <Th filterValue={assetFilter || "Tous"}>Actif</Th>
                     <Th>Symbole</Th>
                     <Th>Quantité</Th>
                     <Th>Prix unitaire</Th>
@@ -575,8 +575,18 @@ export default function TransactionsPage() {
   );
 }
 
-function Th({ children }: { children: ReactNode }) {
-  return <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">{children}</th>;
+function Th({ children, filterValue }: { children: ReactNode; filterValue?: string }) {
+  const displayFilterValue = filterValue?.trim();
+  return (
+    <th className="px-4 py-3 text-left align-top">
+      <div className="flex flex-col gap-1">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">{children}</span>
+        {displayFilterValue ? (
+          <span className="text-xs font-medium text-slate-400 normal-case leading-4">{displayFilterValue}</span>
+        ) : null}
+      </div>
+    </th>
+  );
 }
 
 function Td({ children }: { children: ReactNode }) {
