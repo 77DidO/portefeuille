@@ -137,6 +137,8 @@ def test_run_migrations_from_legacy_schema(tmp_path, monkeypatch):
         with create_engine(database_url).connect() as connection:
             inspector = inspect(connection)
             assert inspector.has_table("alembic_version")
+            transactions_columns = {col["name"] for col in inspector.get_columns("transactions")}
+            assert {"fee_asset", "fx_rate"}.issubset(transactions_columns)
             holdings_columns = {col["name"] for col in inspector.get_columns("holdings")}
             assert "type_portefeuille" in holdings_columns
     finally:
