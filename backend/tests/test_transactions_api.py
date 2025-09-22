@@ -78,6 +78,21 @@ def test_list_transactions_supports_filters() -> None:
                     notes=None,
                     external_ref="tx-3",
                 ),
+                Transaction(
+                    account_id="ACC-2",
+                    source="BROKER_B",
+                    type_portefeuille="CTO",
+                    operation="SELL",
+                    asset="ASSET-1",
+                    symbol_or_isin="ASSET-1",
+                    quantity=0.5,
+                    unit_price_eur=130.0,
+                    fee_eur=1.0,
+                    total_eur=65.0,
+                    ts=base_ts + timedelta(days=3),
+                    notes=None,
+                    external_ref="tx-4",
+                ),
             ]
         )
         db.commit()
@@ -98,7 +113,12 @@ def test_list_transactions_supports_filters() -> None:
         response = client.get("/transactions/")
         assert response.status_code == 200
         payload = response.json()
-        assert [item["external_ref"] for item in payload] == ["tx-3", "tx-2", "tx-1"]
+        assert [item["external_ref"] for item in payload] == [
+            "tx-4",
+            "tx-3",
+            "tx-2",
+            "tx-1",
+        ]
 
         response = client.get("/transactions/", params={"source": "BROKER_A"})
         assert response.status_code == 200
@@ -109,6 +129,16 @@ def test_list_transactions_supports_filters() -> None:
         assert response.status_code == 200
         payload = response.json()
         assert [item["external_ref"] for item in payload] == ["tx-2", "tx-1"]
+
+        response = client.get("/transactions/", params={"asset": "ASSET-1"})
+        assert response.status_code == 200
+        payload = response.json()
+        assert [item["external_ref"] for item in payload] == ["tx-4", "tx-1"]
+
+        response = client.get("/transactions/", params={"operation": "SELL"})
+        assert response.status_code == 200
+        payload = response.json()
+        assert [item["external_ref"] for item in payload] == ["tx-4"]
 
     finally:
         db.close()

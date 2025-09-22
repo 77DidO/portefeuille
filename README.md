@@ -90,6 +90,8 @@ réponse JSON avant application de la limite de 500 éléments :
 
 - `source` : limite les résultats à une source de données spécifique.
 - `type` : alias pour `type_portefeuille`, limite les transactions au type de portefeuille demandé.
+- `asset` : restreint la liste à un instrument donné.
+- `operation` : filtre par type d'opération (BUY, SELL, etc.).
 
 ## Fonctionnalités principales
 - Accès direct mono-utilisateur (aucune authentification)
