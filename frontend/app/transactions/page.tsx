@@ -161,6 +161,16 @@ export default function TransactionsPage() {
       setActionError("Total invalide");
       return;
     }
+    const feeAsset = editForm.fee_asset.trim() ? editForm.fee_asset.trim() : null;
+    const fxRateInput = editForm.fx_rate.trim();
+    let fxRate: number | null = null;
+    if (fxRateInput !== "") {
+      fxRate = Number(fxRateInput.replace(",", "."));
+      if (Number.isNaN(fxRate)) {
+        setActionError("Taux de change invalide");
+        return;
+      }
+    }
     if (!editForm.ts) {
       setActionError("Date invalide");
       return;
@@ -180,6 +190,8 @@ export default function TransactionsPage() {
       quantity,
       unit_price_eur: unitPrice,
       fee_eur: fee,
+      fee_asset: feeAsset,
+      fx_rate: fxRate,
       total_eur: total,
       ts: tsDate.toISOString(),
       notes: editForm.notes.trim() ? editForm.notes.trim() : null,
@@ -377,6 +389,8 @@ export default function TransactionsPage() {
                     <Th>Quantité</Th>
                     <Th>Prix unitaire</Th>
                     <Th>Frais</Th>
+                    <Th>Devise frais</Th>
+                    <Th>Taux FX</Th>
                     <Th>Total</Th>
                     <Th>Notes</Th>
                     <Th>Actions</Th>
@@ -395,6 +409,8 @@ export default function TransactionsPage() {
                         <Td>{formatNumber(transaction.quantity, 4)}</Td>
                         <Td>{formatCurrency(transaction.unit_price_eur)}</Td>
                         <Td>{formatCurrency(transaction.fee_eur)}</Td>
+                        <Td>{transaction.fee_asset?.trim() || "—"}</Td>
+                        <Td>{formatNumber(transaction.fx_rate, 6)}</Td>
                         <Td>{formatCurrency(transaction.total_eur)}</Td>
                         <Td className="max-w-xs truncate" title={transaction.notes ?? undefined}>
                           {transaction.notes ?? "—"}
@@ -422,7 +438,7 @@ export default function TransactionsPage() {
                       </tr>
                       {editingId === transaction.id && editForm ? (
                         <tr className="bg-slate-50">
-                          <td colSpan={12} className="px-4 py-4">
+                          <td colSpan={14} className="px-4 py-4">
                             <form onSubmit={handleEditSubmit} className="space-y-4">
                               <div className="grid gap-4 md:grid-cols-2">
                                 <FormField label="Source">
@@ -494,6 +510,24 @@ export default function TransactionsPage() {
                                     value={editForm.fee_eur}
                                     onChange={handleEditFieldChange}
                                     required
+                                  />
+                                </FormField>
+                                <FormField label="Devise des frais">
+                                  <input
+                                    className="w-full rounded border border-slate-200 px-3 py-2"
+                                    name="fee_asset"
+                                    value={editForm.fee_asset}
+                                    onChange={handleEditFieldChange}
+                                  />
+                                </FormField>
+                                <FormField label="Taux de change">
+                                  <input
+                                    type="number"
+                                    step="any"
+                                    className="w-full rounded border border-slate-200 px-3 py-2"
+                                    name="fx_rate"
+                                    value={editForm.fx_rate}
+                                    onChange={handleEditFieldChange}
                                   />
                                 </FormField>
                                 <FormField label="Total (€)">
@@ -623,6 +657,8 @@ type TransactionResponse = {
   quantity: number;
   unit_price_eur: number;
   fee_eur: number;
+  fee_asset: string | null;
+  fx_rate: number | null;
   total_eur: number;
   ts: string;
   notes?: string | null;
@@ -638,6 +674,8 @@ type TransactionUpdatePayload = {
   quantity: number;
   unit_price_eur: number;
   fee_eur: number;
+  fee_asset: string | null;
+  fx_rate: number | null;
   total_eur: number;
   ts: string;
   notes: string | null;
@@ -653,6 +691,8 @@ type TransactionFormState = {
   quantity: string;
   unit_price_eur: string;
   fee_eur: string;
+  fee_asset: string;
+  fx_rate: string;
   total_eur: string;
   ts: string;
   notes: string;
@@ -669,6 +709,8 @@ function transactionToFormState(transaction: TransactionResponse): TransactionFo
     quantity: transaction.quantity.toString(),
     unit_price_eur: transaction.unit_price_eur.toString(),
     fee_eur: transaction.fee_eur.toString(),
+    fee_asset: transaction.fee_asset ?? "",
+    fx_rate: transaction.fx_rate !== null && transaction.fx_rate !== undefined ? transaction.fx_rate.toString() : "",
     total_eur: transaction.total_eur.toString(),
     ts: formatDateTimeLocalInput(transaction.ts),
     notes: transaction.notes ?? "",
