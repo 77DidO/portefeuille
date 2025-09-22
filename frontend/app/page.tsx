@@ -248,11 +248,17 @@ export default function DashboardPage() {
                     <Td>{formatCurrency(holding.pru_eur)}</Td>
                     <Td>{formatCurrency(holding.market_price_eur)}</Td>
                     <Td>{formatCurrency(holding.market_value_eur)}</Td>
-                    <Td className={holding.pl_eur >= 0 ? "text-emerald-600" : "text-red-600"}>
-                      <TrendValue value={holding.pl_eur} formatter={(val) => formatCurrency(val)} />
+                    <Td>
+                      <TrendValue
+                        value={holding.pl_eur}
+                        formatter={(val) => formatCurrency(val)}
+                      />
                     </Td>
-                    <Td className={holding.pl_pct >= 0 ? "text-emerald-600" : "text-red-600"}>
-                      <TrendValue value={holding.pl_pct} formatter={(val) => `${formatNumber(val)}%`} />
+                    <Td>
+                      <TrendValue
+                        value={holding.pl_pct}
+                        formatter={(val) => `${formatNumber(val)}%`}
+                      />
                     </Td>
                   </tr>
                 ))}
@@ -280,13 +286,15 @@ function TrendValue({ value, formatter }: { value: number; formatter: (value: nu
   const icon = isPositive ? "▲" : "▼";
   const sign = isPositive ? "+" : "-";
   const formatted = formatter(Math.abs(value));
+  const colorClass = isPositive ? "text-emerald-600" : "text-red-600";
 
   return (
-    <span className="inline-flex items-center gap-1 font-medium">
+    <span className={`inline-flex items-center gap-1 font-medium ${colorClass}`}>
       <span aria-hidden="true">{icon}</span>
       <span className="sr-only">{isPositive ? "Hausse" : "Baisse"} : </span>
       <span>
-        ({sign} {formatted})
+        {sign} {formatted}
+
       </span>
     </span>
   );
