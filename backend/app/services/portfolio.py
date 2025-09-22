@@ -358,7 +358,7 @@ def get_market_price(symbol: str, type_portefeuille: str | None) -> float:
         return price
 
 
-@cached(_cache)
+@cached(cache=_cache, key=lambda *_args, **_kwargs: "portfolio_holdings")
 def compute_holdings(db: Session) -> Tuple[List[HoldingView], Dict[str, float]]:
     txs: List[Transaction] = db.query(Transaction).order_by(Transaction.ts.asc(), Transaction.id.asc()).all()
     fifo = FIFOPortfolio()
