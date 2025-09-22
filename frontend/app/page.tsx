@@ -294,6 +294,7 @@ function TrendValue({ value, formatter }: { value: number; formatter: (value: nu
       <span className="sr-only">{isPositive ? "Hausse" : "Baisse"} : </span>
       <span>
         {sign} {formatted}
+
       </span>
     </span>
   );

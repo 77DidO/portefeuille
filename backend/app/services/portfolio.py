@@ -304,6 +304,17 @@ def resolve_quote_symbol(symbol: str, type_portefeuille: str | None) -> str:
         _quote_alias_cache[_QUOTE_ALIAS_CACHE_KEY] = updated_aliases
         return fetched
 
+    try:
+        symbol, mic = euronext.lookup_instrument_by_isin(normalized)
+    except euronext.EuronextAPIError:
+        pass
+    else:
+        alias_value = f"{symbol}-{normalized}-{mic}"
+        updated_aliases = dict(aliases)
+        updated_aliases[normalized] = alias_value
+        _quote_alias_cache[_QUOTE_ALIAS_CACHE_KEY] = updated_aliases
+        return alias_value
+
     return normalized
 
 
