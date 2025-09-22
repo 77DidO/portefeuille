@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any, Dict
 
 from app.models.system_logs import SystemLog
@@ -14,7 +15,7 @@ def record_log(db, level: str, component: str, message: str, meta: Dict[str, Any
         level=level,
         component=component,
         message=message,
-        meta_json=(meta and str(meta)) or None,
+        meta_json=json.dumps(meta, ensure_ascii=False, sort_keys=True) if meta else None,
     )
     db.add(log)
     db.commit()
