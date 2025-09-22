@@ -32,12 +32,15 @@ export default function SnapshotsPage() {
     () =>
       snapshots.map((snapshot) => ({
         ...snapshot,
+        value_other_eur: computeOtherValue(snapshot),
         date: formatDate(snapshot.ts)
       })),
     [snapshots]
   );
 
   const lastSnapshot = snapshots.at(-1) ?? null;
+  const lastSnapshotOther =
+    lastSnapshot !== null ? Math.max(0, computeOtherValue(lastSnapshot)) : null;
 
   async function refresh(filters?: { from?: string; to?: string }) {
     try {
@@ -152,11 +155,25 @@ export default function SnapshotsPage() {
         </section>
 
         <section className="space-y-6 rounded-xl bg-white p-6 shadow">
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
             <SummaryCard title="Dernier snapshot" value={lastSnapshot ? formatDateTime(lastSnapshot.ts) : "—"} />
             <SummaryCard
               title="Valeur totale"
               value={lastSnapshot ? formatCurrency(lastSnapshot.value_total_eur) : "—"}
+            />
+            <SummaryCard
+              title="Valeur PEA"
+              value={lastSnapshot ? formatCurrency(lastSnapshot.value_pea_eur) : "—"}
+            />
+            <SummaryCard
+              title="Valeur Crypto"
+              value={lastSnapshot ? formatCurrency(lastSnapshot.value_crypto_eur) : "—"}
+            />
+            <SummaryCard
+              title="Valeur autres"
+              value={
+                lastSnapshotOther !== null ? formatCurrency(lastSnapshotOther) : "—"
+              }
             />
             <SummaryCard
               title="P&L cumulée"
@@ -194,6 +211,7 @@ export default function SnapshotsPage() {
                     <Th>Valeur totale</Th>
                     <Th>Valeur PEA</Th>
                     <Th>Valeur Crypto</Th>
+                    <Th>Valeur autres</Th>
                     <Th>P&L total</Th>
                   </tr>
                 </thead>
@@ -204,6 +222,7 @@ export default function SnapshotsPage() {
                       <Td>{formatCurrency(snapshot.value_total_eur)}</Td>
                       <Td>{formatCurrency(snapshot.value_pea_eur)}</Td>
                       <Td>{formatCurrency(snapshot.value_crypto_eur)}</Td>
+                      <Td>{formatCurrency(Math.max(0, computeOtherValue(snapshot)))}</Td>
                       <Td>{formatSignedCurrency(snapshot.pnl_total_eur)}</Td>
                     </tr>
                   ))}
@@ -232,6 +251,12 @@ function Th({ children }: { children: ReactNode }) {
 
 function Td({ children }: { children: ReactNode }) {
   return <td className="px-4 py-3 text-sm text-slate-700">{children}</td>;
+}
+
+function computeOtherValue(snapshot: SnapshotResponse): number {
+  return (
+    snapshot.value_total_eur - snapshot.value_pea_eur - snapshot.value_crypto_eur
+  );
 }
 
 type SnapshotResponse = {
