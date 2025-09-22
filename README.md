@@ -81,6 +81,16 @@ cd backend
 pytest
 ```
 
+## API
+
+### GET /transactions
+
+L'endpoint de liste des transactions accepte des filtres optionnels pour affiner la
+réponse JSON avant application de la limite de 500 éléments :
+
+- `source` : limite les résultats à une source de données spécifique.
+- `type` : alias pour `type_portefeuille`, limite les transactions au type de portefeuille demandé.
+
 ## Fonctionnalités principales
 - Accès direct mono-utilisateur (aucune authentification)
 - Calcul FIFO des positions et P&L
