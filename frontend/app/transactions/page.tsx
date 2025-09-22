@@ -62,9 +62,7 @@ export default function TransactionsPage() {
     setImportStatus(null);
     setImporting(true);
     try {
-      await api.post("/transactions/import", formData, {
-        headers: { "Content-Type": "multipart/form-data" }
-      });
+      await api.post("/transactions/import", formData);
       setImportStatus("Import terminé avec succès");
       setSelectedFile(null);
       if (fileInputRef.current) {
