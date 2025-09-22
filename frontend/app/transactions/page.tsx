@@ -31,6 +31,8 @@ export default function TransactionsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string>("");
   const [typeFilter, setTypeFilter] = useState<string>("");
+  const [assetFilter, setAssetFilter] = useState<string>("");
+  const [operationFilter, setOperationFilter] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -48,14 +50,26 @@ export default function TransactionsPage() {
       a.localeCompare(b)
     );
   }, [transactions]);
+  const assetOptions = useMemo(() => {
+    return Array.from(new Set(transactions.map((transaction) => transaction.asset))).sort((a, b) =>
+      a.localeCompare(b)
+    );
+  }, [transactions]);
+  const operationOptions = useMemo(() => {
+    return Array.from(new Set(transactions.map((transaction) => transaction.operation))).sort((a, b) =>
+      a.localeCompare(b)
+    );
+  }, [transactions]);
   const filteredTransactions = useMemo(() => {
     return transactions.filter((transaction) => {
       const matchSource = sourceFilter ? transaction.source === sourceFilter : true;
       const matchType = typeFilter ? transaction.type_portefeuille === typeFilter : true;
-      return matchSource && matchType;
+      const matchAsset = assetFilter ? transaction.asset === assetFilter : true;
+      const matchOperation = operationFilter ? transaction.operation === operationFilter : true;
+      return matchSource && matchType && matchAsset && matchOperation;
     });
-  }, [transactions, sourceFilter, typeFilter]);
-  const filtersActive = sourceFilter !== "" || typeFilter !== "";
+  }, [transactions, sourceFilter, typeFilter, assetFilter, operationFilter]);
+  const filtersActive = sourceFilter !== "" || typeFilter !== "" || assetFilter !== "" || operationFilter !== "";
 
   async function refresh() {
     try {
@@ -294,6 +308,40 @@ export default function TransactionsPage() {
                   ))}
                 </select>
               </div>
+              <div className="flex-1">
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Actif
+                </label>
+                <select
+                  className="mt-1 w-full rounded border border-slate-200 px-3 py-2 text-sm"
+                  value={assetFilter}
+                  onChange={(event) => setAssetFilter(event.target.value)}
+                >
+                  <option value="">Tous</option>
+                  {assetOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Opération
+                </label>
+                <select
+                  className="mt-1 w-full rounded border border-slate-200 px-3 py-2 text-sm"
+                  value={operationFilter}
+                  onChange={(event) => setOperationFilter(event.target.value)}
+                >
+                  <option value="">Toutes</option>
+                  {operationOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
               {filtersActive ? (
                 <button
                   type="button"
@@ -301,6 +349,8 @@ export default function TransactionsPage() {
                   onClick={() => {
                     setSourceFilter("");
                     setTypeFilter("");
+                    setAssetFilter("");
+                    setOperationFilter("");
                   }}
                 >
                   Réinitialiser les filtres
