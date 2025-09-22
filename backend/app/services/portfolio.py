@@ -484,7 +484,7 @@ def get_market_price(symbol: str, type_portefeuille: str | None) -> float:
                 success_meta = {**meta, "price": price}
                 _record_portfolio_log(
                     "INFO",
-                    f"Euronext price fetch succeeded for {symbol} candidate {candidate}",
+                    f"Euronext price fetch succeeded for {symbol} candidate {candidate} at price {price}",
                     success_meta,
                 )
                 _price_cache[cache_key] = price
@@ -532,7 +532,7 @@ def get_market_price(symbol: str, type_portefeuille: str | None) -> float:
         success_meta = {**attempt_meta, "price": price}
         _record_portfolio_log(
             "INFO",
-            f"Price fetched for {symbol} via {fetcher.__name__}",
+            f"Price fetched for {symbol} via {fetcher.__name__} at price {price}",
             success_meta,
         )
         _price_cache[cache_key] = price
