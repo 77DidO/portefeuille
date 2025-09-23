@@ -88,7 +88,7 @@ def test_transactions_roundtrip_preserves_fee_fields() -> None:
         response = client.get("/transactions/")
         assert response.status_code == 200
         payload = response.json()
-        data_by_ref = {item["transaction_uid"]: item for item in payload}
+        data_by_ref = {item["csv_transaction_id"]: item for item in payload}
 
         assert data_by_ref["tx-1"]["fee_asset"] == "USD"
         assert data_by_ref["tx-2"]["fee_asset"] == "BTC"

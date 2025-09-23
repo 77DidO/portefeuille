@@ -31,6 +31,9 @@ interface HoldingDetail {
   identifier: string;
   asset: string;
   symbol_or_isin?: string | null;
+  symbol?: string | null;
+  isin?: string | null;
+  mic?: string | null;
   quantity: number;
   pru_eur: number;
   invested_eur: number;
@@ -109,7 +112,7 @@ export default function PositionDetailPage() {
           </Link>
           <div>
             <h1 className="text-2xl font-semibold text-slate-800">
-              {detail?.symbol_or_isin ?? decodedId || "Position"}
+              {detail?.symbol ?? detail?.isin ?? detail?.symbol_or_isin ?? decodedId || "Position"}
             </h1>
             {detail ? (
               <p className="text-sm text-slate-500">
@@ -149,7 +152,9 @@ export default function PositionDetailPage() {
                 <DetailItem label="PRU" value={formatCurrency(detail.pru_eur)} />
                 <DetailItem label="Dividendes" value={formatCurrency(detail.dividends_eur)} />
                 <DetailItem label="Type de portefeuille" value={detail.type_portefeuille} />
-                <DetailItem label="Symbole" value={detail.symbol_or_isin ?? "-"} />
+                <DetailItem label="Symbole" value={detail.symbol ?? detail.symbol_or_isin ?? "-"} />
+                <DetailItem label="ISIN" value={detail.isin ?? "-"} />
+                <DetailItem label="MIC" value={detail.mic ?? "-"} />
               </dl>
             </section>
 

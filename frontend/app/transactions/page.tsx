@@ -13,7 +13,7 @@ import {
 
 import { AppShell } from "@/components/AppShell";
 import { api } from "@/lib/api";
-import { formatCurrency, formatDateTime, formatNumber } from "@/lib/format";
+import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
 import { formatErrorDetail } from "@/lib/errors";
 
 export default function TransactionsPage() {
@@ -171,12 +171,12 @@ export default function TransactionsPage() {
         return;
       }
     }
-    if (!editForm.trade_date) {
+    if (!editForm.date) {
       setActionError("Date invalide");
       return;
     }
-    const tradeDateValue = new Date(editForm.trade_date);
-    if (Number.isNaN(tradeDateValue.getTime())) {
+    const parsedDate = new Date(editForm.date);
+    if (Number.isNaN(parsedDate.getTime())) {
       setActionError("Date invalide");
       return;
     }
@@ -196,9 +196,11 @@ export default function TransactionsPage() {
       fee_asset: feeAsset,
       fee_quantity: feeQuantity,
       total_eur: total,
-      trade_date: tradeDateValue.toISOString(),
+      date: editForm.date,
       notes: editForm.notes.trim() ? editForm.notes.trim() : null,
-      transaction_uid: editForm.transaction_uid.trim() ? editForm.transaction_uid.trim() : null
+      csv_transaction_id: editForm.csv_transaction_id.trim()
+        ? editForm.csv_transaction_id.trim()
+        : null
     };
 
     setSaving(true);
@@ -216,7 +218,7 @@ export default function TransactionsPage() {
 
   async function handleDelete(transaction: TransactionResponse) {
     const confirmed = window.confirm(
-      `Supprimer la transaction du ${formatDateTime(transaction.trade_date)} ? Cette action est irréversible.`
+      `Supprimer la transaction du ${formatDate(transaction.date)} ? Cette action est irréversible.`
     );
     if (!confirmed) {
       return;
@@ -406,12 +408,12 @@ export default function TransactionsPage() {
                   {filteredTransactions.map((transaction) => (
                     <Fragment key={transaction.id}>
                       <tr className="hover:bg-slate-50">
-                        <Td>{formatDateTime(transaction.trade_date)}</Td>
+                        <Td>{formatDate(transaction.date)}</Td>
                         <Td>{transaction.source}</Td>
                         <Td className="uppercase">{transaction.portfolio_type}</Td>
                         <Td>{transaction.operation}</Td>
                         <Td>{transaction.asset}</Td>
-                        <Td>{transaction.symbol ?? transaction.symbol_or_isin ?? "-"}</Td>
+                        <Td>{transaction.symbol ?? transaction.isin ?? transaction.symbol_or_isin ?? "-"}</Td>
                         <Td>{transaction.isin ?? "-"}</Td>
                         <Td>{transaction.mic ?? "-"}</Td>
                         <Td>{formatNumber(transaction.quantity, 4)}</Td>
@@ -424,8 +426,8 @@ export default function TransactionsPage() {
                             : "—"}
                         </Td>
                         <Td>{formatCurrency(transaction.total_eur)}</Td>
-                        <Td className="max-w-xs truncate" title={transaction.transaction_uid ?? undefined}>
-                          {transaction.transaction_uid ?? "—"}
+                        <Td className="max-w-xs truncate" title={transaction.csv_transaction_id ?? undefined}>
+                          {transaction.csv_transaction_id ?? "—"}
                         </Td>
                         <Td className="max-w-xs truncate" title={transaction.notes ?? undefined}>
                           {transaction.notes ?? "—"}
@@ -580,19 +582,19 @@ export default function TransactionsPage() {
                                 </FormField>
                                 <FormField label="Date">
                                   <input
-                                    type="datetime-local"
+                                    type="date"
                                     className="w-full rounded border border-slate-200 px-3 py-2"
-                                    name="trade_date"
-                                    value={editForm.trade_date}
+                                    name="date"
+                                    value={editForm.date}
                                     onChange={handleEditFieldChange}
                                     required
                                   />
                                 </FormField>
-                                <FormField label="UID transaction" className="md:col-span-2">
+                                <FormField label="Identifiant CSV" className="md:col-span-2">
                                   <input
                                     className="w-full rounded border border-slate-200 px-3 py-2"
-                                    name="transaction_uid"
-                                    value={editForm.transaction_uid}
+                                    name="csv_transaction_id"
+                                    value={editForm.csv_transaction_id}
                                     onChange={handleEditFieldChange}
                                   />
                                 </FormField>
@@ -702,9 +704,9 @@ type TransactionResponse = {
   fee_asset: string | null;
   fee_quantity: number | null;
   total_eur: number;
-  trade_date: string;
+  date: string;
   notes?: string | null;
-  transaction_uid?: string | null;
+  csv_transaction_id?: string | null;
 };
 
 type TransactionUpdatePayload = {
@@ -722,9 +724,9 @@ type TransactionUpdatePayload = {
   fee_asset: string | null;
   fee_quantity: number | null;
   total_eur: number;
-  trade_date: string;
+  date: string;
   notes: string | null;
-  transaction_uid: string | null;
+  csv_transaction_id: string | null;
 };
 
 type TransactionFormState = {
@@ -742,9 +744,9 @@ type TransactionFormState = {
   fee_asset: string;
   fee_quantity: string;
   total_eur: string;
-  trade_date: string;
+  date: string;
   notes: string;
-  transaction_uid: string;
+  csv_transaction_id: string;
 };
 
 function transactionToFormState(transaction: TransactionResponse): TransactionFormState {
@@ -763,15 +765,8 @@ function transactionToFormState(transaction: TransactionResponse): TransactionFo
     fee_asset: transaction.fee_asset ?? "",
     fee_quantity: transaction.fee_quantity !== null && transaction.fee_quantity !== undefined ? transaction.fee_quantity.toString() : "",
     total_eur: transaction.total_eur.toString(),
-    trade_date: formatDateTimeLocalInput(transaction.trade_date),
+    date: transaction.date,
     notes: transaction.notes ?? "",
-    transaction_uid: transaction.transaction_uid ?? ""
+    csv_transaction_id: transaction.csv_transaction_id ?? ""
   };
-}
-
-function formatDateTimeLocalInput(isoString: string): string {
-  const date = new Date(isoString);
-  const offsetMinutes = date.getTimezoneOffset();
-  const localDate = new Date(date.getTime() - offsetMinutes * 60 * 1000);
-  return localDate.toISOString().slice(0, 16);
 }
