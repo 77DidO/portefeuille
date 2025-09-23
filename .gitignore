@@ -7,3 +7,5 @@ frontend/.next/
 portfolio.db
 .cache/
 .pytest_cache/
+
+frontend/.tests-dist/
