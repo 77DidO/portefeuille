@@ -6,7 +6,11 @@ from sqlalchemy.pool import StaticPool
 
 from app.models.base import Base
 from app.models.transactions import Transaction
-from app.services.importer import Importer, compute_transaction_uid_from_row
+from app.services.importer import (
+    Importer,
+    REQUIRED_COLUMNS,
+    compute_transaction_uid_from_row,
+)
 
 
 def _create_session():
@@ -79,10 +83,7 @@ def test_importer_does_not_duplicate_permuted_rows() -> None:
     db = SessionLocal()
     try:
         importer = Importer(db)
-        header = (
-            "id,source,portfolio_type,operation,date,asset,symbol,isin,mic,quantity,unit_price_eur,total_eur,"
-            "fee_eur,fee_asset,fee_quantity,notes\n"
-        )
+        header = ",".join(REQUIRED_COLUMNS["transactions.csv"]) + "\n"
         row_a = (
             "tx-1,BROKER_A,CTO,BUY,2024-01-01T12:00:00+00:00,ASSET-1,AAA,,,1,100,100,0,USD,,\n"
         )
