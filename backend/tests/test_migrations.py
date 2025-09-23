@@ -260,7 +260,7 @@ def test_run_migrations_from_legacy_schema(tmp_path, monkeypatch):
                     ).mappings().all()
 
                     assert rows[0]["symbol_or_isin"].strip() == "btc"
-                    assert rows[0]["symbol"] == "btc"
+                    assert rows[0]["symbol"] == "BTC"
                     assert rows[0]["isin"] is None
                     assert rows[0]["transaction_uid"] == "legacy-external-1"
                     assert rows[0]["trade_date"] is not None

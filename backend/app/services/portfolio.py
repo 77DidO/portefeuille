@@ -244,19 +244,33 @@ def _build_identifier_from_key(key: PortfolioKey) -> str:
 def _resolve_transaction_components(
     tx: Transaction,
 ) -> Tuple[str, str, str, set[str]]:
-    symbol = _normalize_symbol(tx.symbol)
-    isin = _normalize_isin(tx.isin)
-    mic = _normalize_mic_value(tx.mic)
+    symbol = _normalize_symbol(tx.symbol) or None
+    isin = _normalize_isin(tx.isin) or None
+    mic = _normalize_mic_value(tx.mic) or None
     mic_candidates: set[str] = set()
     if mic:
         mic_candidates.add(mic)
-    raw_mic = (tx.mic or "").strip().upper()
+    raw_mic = (tx.mic or "").strip()
     if raw_mic:
-        mic_candidates.add(raw_mic)
+        normalized_raw_mic = _normalize_mic_value(raw_mic)
+        if normalized_raw_mic:
+            mic_candidates.add(normalized_raw_mic)
+            if not mic:
+                mic = normalized_raw_mic
 
-    fallback = (tx.symbol_or_isin or tx.asset or "").strip()
-    fallback_upper = fallback.upper()
-    if fallback_upper and not (symbol and isin and mic):
+    fallback_candidates = []
+    if not symbol or not isin or not mic:
+        if tx.symbol_or_isin:
+            fallback_candidates.append(tx.symbol_or_isin)
+        if tx.asset:
+            fallback_candidates.append(tx.asset)
+
+    for fallback in fallback_candidates:
+        if symbol and isin and mic:
+            break
+        fallback_upper = fallback.strip().upper()
+        if not fallback_upper:
+            continue
         if not symbol and not _ISIN_REGEX.match(fallback_upper):
             symbol = fallback_upper
         if not isin and _ISIN_REGEX.match(fallback_upper):
@@ -848,8 +862,8 @@ def compute_holdings(db: Session) -> Tuple[List[HoldingView], Dict[str, float]]:
         normalized_symbol, normalized_isin, normalized_mic, mic_candidates = (
             _resolve_transaction_components(tx)
         )
-        raw_symbol = (tx.symbol or "").strip()
-        raw_isin = (tx.isin or "").strip().upper()
+        stored_symbol = _normalize_symbol(tx.symbol) or None
+        stored_isin = _normalize_isin(tx.isin) or None
         key = _make_portfolio_key(
             tx.portfolio_type,
             normalized_symbol or None,
@@ -865,12 +879,12 @@ def compute_holdings(db: Session) -> Tuple[List[HoldingView], Dict[str, float]]:
         asset_label = (tx.asset or "").strip()
         if key not in asset_labels or not asset_labels[key]:
             asset_labels[key] = asset_label or instrument_label or key.symbol or key.isin or key.mic
-        if normalized_symbol or raw_symbol:
-            symbol_values[key] = raw_symbol or normalized_symbol
+        if normalized_symbol or stored_symbol:
+            symbol_values[key] = normalized_symbol or stored_symbol
         elif key not in symbol_values:
             symbol_values[key] = None
-        if normalized_isin or raw_isin:
-            isin_values[key] = raw_isin or normalized_isin
+        if normalized_isin or stored_isin:
+            isin_values[key] = normalized_isin or stored_isin
         elif key not in isin_values:
             isin_values[key] = None
         if normalized_mic:
@@ -1031,6 +1045,14 @@ def compute_holding_detail(db: Session, identifier: str) -> HoldingDetailView:
         instrument_candidates.add(key.symbol)
     if key.isin:
         instrument_candidates.add(key.isin)
+    if holding.symbol:
+        candidate_symbol = _normalize_symbol(holding.symbol)
+        if candidate_symbol:
+            instrument_candidates.add(candidate_symbol)
+    if holding.isin:
+        candidate_isin = _normalize_isin(holding.isin)
+        if candidate_isin:
+            instrument_candidates.add(candidate_isin)
     holding_issue = _normalize_symbol(holding.symbol_or_isin)
     if holding_issue:
         instrument_candidates.add(holding_issue)
