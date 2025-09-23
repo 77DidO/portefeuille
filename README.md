@@ -88,6 +88,21 @@ Le script réplique les étapes Linux : création de l'environnement virtuel, in
 
 Le backend est accessible sur http://localhost:8000 et le frontend sur http://localhost:3000. L'UI détecte automatiquement cette URL backend lorsqu'elle est servie depuis `localhost` et, pour les sessions distantes (`https://…-3000…`), remplace le suffixe `-3000` par `-8000` afin de contacter le backend exposé via le même tunnel.
 
+### Migrations Alembic
+
+Les migrations sont configurées pour être lancées depuis la racine du dépôt :
+
+```bash
+alembic upgrade head
+```
+
+Depuis le dossier `backend/`, utilisez l'option `-c` pour pointer vers le fichier de configuration racine :
+
+```bash
+cd backend
+alembic -c ../alembic.ini upgrade head
+```
+
 Exportez `NEXT_PUBLIC_API_BASE` uniquement si le backend est servi depuis un autre hôte/port que celui du frontend (ex. backend public distinct, reverse proxy avec chemin spécifique). Dans ce cas, la valeur définie reste prioritaire sur l'auto-détection.
 
 Avec Docker Compose, la variable `NEXT_PUBLIC_API_BASE` n'est plus définie par défaut : l'auto-détection cible le backend local. Décommentez et ajustez la variable dans `docker-compose.yml` uniquement si le frontend doit pointer vers une URL différente (tunnel, domaine public, etc.).
