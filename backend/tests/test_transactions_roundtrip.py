@@ -125,3 +125,57 @@ def test_transactions_import_is_idempotent_with_inserted_rows() -> None:
     finally:
         db.close()
         engine.dispose()
+
+
+def test_transactions_import_updates_identical_rows_with_new_external_ref() -> None:
+    engine, SessionLocal = _create_session()
+    db = SessionLocal()
+    try:
+        importer = Importer(db)
+        header = (
+            "source,type_portefeuille,operation,asset,symbol_or_isin,quantity,unit_price_eur," +
+            "fee_eur,fee_asset,fx_rate,total_eur,ts,notes,external_ref\n"
+        )
+        old_external_ref = "legacy_ref_123"
+        row_values = [
+            "BROKER_A",
+            "CTO",
+            "BUY",
+            "ASSET-1",
+            "AAA",
+            "1",
+            "100",
+            "0",
+            "",
+            "1",
+            "100",
+            "2024-01-01T12:00:00+00:00",
+            "",
+            old_external_ref,
+        ]
+        csv_content = header + ",".join(row_values) + "\n"
+        importer.import_transactions_csv(csv_content)
+
+        transaction = db.query(Transaction).one()
+        assert transaction.external_ref == old_external_ref
+
+        row_for_computation = dict(
+            zip(
+                header.strip().split(","),
+                row_values,
+            )
+        )
+        row_for_computation["external_ref"] = ""
+        expected_external_ref = compute_external_ref_from_row(row_for_computation)
+
+        row_values_with_new_algo = list(row_values)
+        row_values_with_new_algo[-1] = ""
+        csv_content_reimport = header + ",".join(row_values_with_new_algo) + "\n"
+        importer.import_transactions_csv(csv_content_reimport)
+
+        transactions = db.query(Transaction).all()
+        assert len(transactions) == 1
+        assert transactions[0].external_ref == expected_external_ref
+    finally:
+        db.close()
+        engine.dispose()

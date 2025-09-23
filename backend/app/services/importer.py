@@ -47,6 +47,22 @@ EXTERNAL_REF_FIELDS = [
 
 EXTERNAL_REF_SEPARATOR = "\x1f"
 
+FUNCTIONAL_TRANSACTION_FIELDS = [
+    "source",
+    "type_portefeuille",
+    "operation",
+    "asset",
+    "symbol_or_isin",
+    "quantity",
+    "unit_price_eur",
+    "fee_eur",
+    "fee_asset",
+    "fx_rate",
+    "total_eur",
+    "ts",
+    "notes",
+]
+
 
 def _clean_text(value: str | None) -> str:
     return value.strip() if value is not None else ""
@@ -198,6 +214,10 @@ class Importer:
     def __init__(self, db: Session) -> None:
         self.db = db
 
+    def _find_identical_transaction(self, data: Mapping[str, object]) -> Transaction | None:
+        filters = {field: data.get(field) for field in FUNCTIONAL_TRANSACTION_FIELDS}
+        return self.db.query(Transaction).filter_by(**filters).one_or_none()
+
     def import_zip(self, content: bytes) -> None:
         with zipfile.ZipFile(io.BytesIO(content)) as zf:
             if "transactions.csv" not in zf.namelist():
@@ -269,5 +289,10 @@ class Importer:
                 for field, value in data.items():
                     setattr(existing, field, value)
             else:
-                self.db.add(Transaction(**data))
+                identical = self._find_identical_transaction(data)
+                if identical:
+                    for field, value in data.items():
+                        setattr(identical, field, value)
+                else:
+                    self.db.add(Transaction(**data))
         self.db.commit()
