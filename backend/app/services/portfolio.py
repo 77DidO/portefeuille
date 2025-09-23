@@ -50,6 +50,10 @@ class HoldingView:
     mic_variants: Tuple[str, ...] = field(default_factory=tuple)
     portfolio_key: "PortfolioKey" | None = None
 
+    @property
+    def portfolio_type(self) -> str:
+        return self.type_portefeuille
+
 
 @dataclass
 class HoldingHistoryPointView:
@@ -252,7 +256,7 @@ def _resolve_transaction_components(
 
     fallback = (tx.symbol_or_isin or tx.asset or "").strip()
     fallback_upper = fallback.upper()
-    if fallback_upper:
+    if fallback_upper and not (symbol and isin and mic):
         if not symbol and not _ISIN_REGEX.match(fallback_upper):
             symbol = fallback_upper
         if not isin and _ISIN_REGEX.match(fallback_upper):
@@ -844,6 +848,8 @@ def compute_holdings(db: Session) -> Tuple[List[HoldingView], Dict[str, float]]:
         normalized_symbol, normalized_isin, normalized_mic, mic_candidates = (
             _resolve_transaction_components(tx)
         )
+        raw_symbol = (tx.symbol or "").strip()
+        raw_isin = (tx.isin or "").strip().upper()
         key = _make_portfolio_key(
             tx.portfolio_type,
             normalized_symbol or None,
@@ -859,12 +865,12 @@ def compute_holdings(db: Session) -> Tuple[List[HoldingView], Dict[str, float]]:
         asset_label = (tx.asset or "").strip()
         if key not in asset_labels or not asset_labels[key]:
             asset_labels[key] = asset_label or instrument_label or key.symbol or key.isin or key.mic
-        if normalized_symbol:
-            symbol_values[key] = normalized_symbol
+        if normalized_symbol or raw_symbol:
+            symbol_values[key] = raw_symbol or normalized_symbol
         elif key not in symbol_values:
             symbol_values[key] = None
-        if normalized_isin:
-            isin_values[key] = normalized_isin
+        if normalized_isin or raw_isin:
+            isin_values[key] = raw_isin or normalized_isin
         elif key not in isin_values:
             isin_values[key] = None
         if normalized_mic:

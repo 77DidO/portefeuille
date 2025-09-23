@@ -274,7 +274,8 @@ def test_run_migrations_from_legacy_schema(tmp_path, monkeypatch):
                     assert rows[1]["portfolio_type"] == "CTO"
 
                     holdings_columns = {col["name"] for col in inspector.get_columns("holdings")}
-                    assert "type_portefeuille" in holdings_columns
+                    assert {"portfolio_type", "symbol", "isin", "mic"}.issubset(holdings_columns)
+                    assert "type_portefeuille" not in holdings_columns
             finally:
                 engine.dispose()
                 if cleanup:

@@ -16,7 +16,7 @@ Chaque fichier est encodé en UTF-8 avec séparateur `,` et inclut une ligne d'e
 
 ## holdings.csv
 
-`as_of,type_portefeuille,asset,symbol_or_isin,quantity,pru_eur,invested_eur,market_price_eur,market_value_eur,pl_eur,pl_pct`
+`as_of,portfolio_type,asset,symbol,isin,mic,symbol_or_isin,quantity,pru_eur,invested_eur,market_price_eur,market_value_eur,pl_eur,pl_pct`
 
 - Les holdings sont calculés à partir des transactions et sont fournis à titre informatif dans l'export.
 - `as_of` correspond à la date/heure de calcul (ISO 8601). Lors d'un import, ce fichier est ignoré : les positions sont recalculées côté serveur.

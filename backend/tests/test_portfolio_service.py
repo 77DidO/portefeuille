@@ -39,6 +39,7 @@ def _add_transaction(
         operation=operation,
         asset=symbol,
         symbol_or_isin=symbol,
+        symbol=symbol,
         quantity=quantity,
         unit_price_eur=unit_price,
         fee_eur=0.0,
@@ -449,6 +450,8 @@ def test_compute_holdings_separates_same_symbol(monkeypatch, account_ids):
 
         assert pea_holding.symbol_or_isin == "AAPL"
         assert cto_holding.symbol_or_isin == "AAPL"
+        assert pea_holding.symbol == "AAPL"
+        assert cto_holding.symbol == "AAPL"
         assert pea_holding.identifier != cto_holding.identifier
 
         assert pea_holding.quantity == pytest.approx(10.0)
