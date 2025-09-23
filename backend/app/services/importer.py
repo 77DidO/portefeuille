@@ -362,6 +362,8 @@ class Importer:
     def _import_transactions(self, csv_bytes: bytes) -> None:
         text = csv_bytes.decode("utf-8")
         reader = csv.DictReader(io.StringIO(text))
+        if not reader.fieldnames:
+            raise ImportErrorDetail("En-tête CSV manquant")
         missing = [c for c in REQUIRED_COLUMNS["transactions.csv"] if c not in reader.fieldnames]
         if missing:
             raise ImportErrorDetail(f"Colonnes manquantes: {', '.join(missing)}")

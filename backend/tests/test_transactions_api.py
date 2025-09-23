@@ -147,3 +147,30 @@ def test_list_transactions_supports_filters() -> None:
     finally:
         db.close()
         engine.dispose()
+
+
+def test_import_transactions_requires_header() -> None:
+    engine, SessionLocal = _create_session()
+    try:
+        def override_get_db():
+            session = SessionLocal()
+            try:
+                yield session
+            finally:
+                session.close()
+
+        app = FastAPI()
+        app.include_router(transactions_api.router)
+        app.dependency_overrides[deps.get_db] = override_get_db
+
+        client = TestClient(app)
+
+        response = client.post(
+            "/transactions/import",
+            files={"file": ("transactions.csv", b"", "text/csv")},
+        )
+
+        assert response.status_code == 400
+        assert response.json() == {"detail": {"message": "En-tête CSV manquant"}}
+    finally:
+        engine.dispose()
