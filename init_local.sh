@@ -40,7 +40,11 @@ BACKEND_PID=$!
 popd >/dev/null
 
 pushd "$ROOT_DIR/frontend" >/dev/null
-NEXT_PUBLIC_API_BASE="${NEXT_PUBLIC_API_BASE:-http://localhost:8000}" npm run dev &
+if [ -n "${NEXT_PUBLIC_API_BASE:-}" ]; then
+  NEXT_PUBLIC_API_BASE="$NEXT_PUBLIC_API_BASE" npm run dev &
+else
+  npm run dev &
+fi
 FRONTEND_PID=$!
 popd >/dev/null
 

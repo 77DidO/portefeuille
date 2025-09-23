@@ -24,10 +24,6 @@ finally {
     Pop-Location
 }
 
-if (-not $env:NEXT_PUBLIC_API_BASE) {
-    $env:NEXT_PUBLIC_API_BASE = 'http://localhost:8000'
-}
-
 Write-Host 'Starting backend (uvicorn) and frontend (Next.js). Press Ctrl+C to stop both services.'
 
 $backendProcess = Start-Process -FilePath $pythonCmd -ArgumentList '-m','uvicorn','app.main:app','--reload','--host','0.0.0.0','--port','8000' -WorkingDirectory (Join-Path $rootDir 'backend') -PassThru -NoNewWindow
