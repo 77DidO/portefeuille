@@ -117,7 +117,7 @@ def test_list_transactions_supports_filters() -> None:
         response = client.get("/transactions/")
         assert response.status_code == 200
         payload = response.json()
-        assert [item["transaction_uid"] for item in payload] == [
+        assert [item["csv_transaction_id"] for item in payload] == [
             "tx-4",
             "tx-3",
             "tx-2",
@@ -127,22 +127,22 @@ def test_list_transactions_supports_filters() -> None:
         response = client.get("/transactions/", params={"source": "BROKER_A"})
         assert response.status_code == 200
         payload = response.json()
-        assert [item["transaction_uid"] for item in payload] == ["tx-3", "tx-1"]
+        assert [item["csv_transaction_id"] for item in payload] == ["tx-3", "tx-1"]
 
         response = client.get("/transactions/", params={"type": "PEA"})
         assert response.status_code == 200
         payload = response.json()
-        assert [item["transaction_uid"] for item in payload] == ["tx-2", "tx-1"]
+        assert [item["csv_transaction_id"] for item in payload] == ["tx-2", "tx-1"]
 
         response = client.get("/transactions/", params={"asset": "ASSET-1"})
         assert response.status_code == 200
         payload = response.json()
-        assert [item["transaction_uid"] for item in payload] == ["tx-4", "tx-1"]
+        assert [item["csv_transaction_id"] for item in payload] == ["tx-4", "tx-1"]
 
         response = client.get("/transactions/", params={"operation": "SELL"})
         assert response.status_code == 200
         payload = response.json()
-        assert [item["transaction_uid"] for item in payload] == ["tx-4"]
+        assert [item["csv_transaction_id"] for item in payload] == ["tx-4"]
 
     finally:
         db.close()

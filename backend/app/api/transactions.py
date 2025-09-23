@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from sqlalchemy import Date
 from sqlalchemy.orm import Session
 
 from app.api import deps
@@ -21,6 +24,11 @@ def list_transactions(
     portfolio_type: str | None = Query(None, alias="type"),
     asset: str | None = Query(None),
     operation: str | None = Query(None),
+    symbol: str | None = Query(None),
+    isin: str | None = Query(None),
+    mic: str | None = Query(None),
+    csv_transaction_id: str | None = Query(None, alias="csv_id"),
+    transaction_date: date | None = Query(None, alias="date"),
     db: Session = Depends(deps.get_db),
 ):
     query = db.query(Transaction)
@@ -33,6 +41,16 @@ def list_transactions(
         query = query.filter(Transaction.asset == asset)
     if operation is not None:
         query = query.filter(Transaction.operation == operation)
+    if symbol is not None:
+        query = query.filter(Transaction.symbol == symbol)
+    if isin is not None:
+        query = query.filter(Transaction.isin == isin)
+    if mic is not None:
+        query = query.filter(Transaction.mic == mic)
+    if csv_transaction_id is not None:
+        query = query.filter(Transaction.transaction_uid == csv_transaction_id)
+    if transaction_date is not None:
+        query = query.filter(Transaction.trade_date.cast(Date) == transaction_date)
 
     return query.order_by(Transaction.trade_date.desc()).limit(500).all()
 
@@ -74,7 +92,7 @@ def update_transaction(
     if transaction is None:
         raise HTTPException(status_code=404, detail="Transaction introuvable")
 
-    updates = payload.dict(exclude_unset=True)
+    updates = payload.to_orm_updates(getattr(transaction.trade_date, "tzinfo", None))
     for field, value in updates.items():
         setattr(transaction, field, value)
 

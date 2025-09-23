@@ -15,6 +15,9 @@ type Holding = {
   identifier: string;
   asset: string;
   symbol_or_isin?: string;
+  symbol?: string | null;
+  isin?: string | null;
+  mic?: string | null;
   quantity: number;
   pru_eur: number;
   invested_eur: number;
@@ -94,7 +97,7 @@ export default function DashboardPage() {
 
     holdings.forEach((holding) => {
       if (holding.type_portefeuille === "CRYPTO") {
-        const symbol = (holding.symbol_or_isin ?? holding.asset).toUpperCase();
+        const symbol = (holding.symbol ?? holding.symbol_or_isin ?? holding.asset).toUpperCase();
         if (symbol === "BTC" || symbol === "ETH") {
           groups["BTC & ETH"] += holding.market_value_eur;
         } else {
@@ -241,7 +244,7 @@ export default function DashboardPage() {
                         href={`/positions/${encodeURIComponent(holding.identifier)}`}
                         className="font-medium text-indigo-600 hover:underline"
                       >
-                        {holding.symbol_or_isin ?? holding.asset}
+                        {holding.symbol ?? holding.isin ?? holding.symbol_or_isin ?? holding.asset}
                       </Link>
                     </Td>
                     <Td>{holding.quantity.toFixed(4)}</Td>
