@@ -104,7 +104,7 @@ Une fois l'application lancée, l'UI permet également de sauvegarder les param�
 
 ## Import / Export de données
 
-- **Import** : `POST /transactions/import` accepte un fichier CSV ou ZIP (voir `samples/`). Le fichier doit au minimum contenir `transactions.csv` avec les colonnes décrites dans [docs/README_EXPORT.md](docs/README_EXPORT.md). Les références externes (`external_ref`) sont utilisées pour dédupliquer les lignes.
+- **Import** : `POST /transactions/import` accepte un fichier CSV ou ZIP (voir `samples/`). Le fichier doit au minimum contenir `transactions.csv` avec les colonnes décrites dans [docs/README_EXPORT.md](docs/README_EXPORT.md). Les identifiants (`transaction_uid`) sont utilisés pour dédupliquer les lignes.
 - **Export** : `GET /export/zip` retourne une archive ZIP contenant `transactions.csv`, `holdings.csv`, `snapshots.csv` et `journal_trades.csv`. Le détail des colonnes est documenté dans [docs/README_EXPORT.md](docs/README_EXPORT.md).
 
 Après chaque import ou modification de transaction, les positions sont recalculées et mises en cache. Le cache est également invalidé lorsqu'on déclenche un snapshot manuel via `POST /snapshots/run`.

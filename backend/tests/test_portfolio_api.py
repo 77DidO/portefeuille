@@ -109,7 +109,7 @@ def test_history_endpoint_derives_fifo_points(monkeypatch: pytest.MonkeyPatch) -
                 Transaction(
                     account_id="ACC-456",
                     source="TEST",
-                    type_portefeuille="PEA",
+                    portfolio_type="PEA",
                     operation="BUY",
                     asset="MSFT",
                     symbol_or_isin="MSFT",
@@ -117,14 +117,14 @@ def test_history_endpoint_derives_fifo_points(monkeypatch: pytest.MonkeyPatch) -
                     unit_price_eur=100.0,
                     fee_eur=1.0,
                     total_eur=100.0,
-                    ts=tx1_ts,
+                    trade_date=tx1_ts,
                     notes=None,
-                    external_ref="tx-1",
+                    transaction_uid="tx-1",
                 ),
                 Transaction(
                     account_id="ACC-456",
                     source="TEST",
-                    type_portefeuille="PEA",
+                    portfolio_type="PEA",
                     operation="BUY",
                     asset="MSFT",
                     symbol_or_isin="MSFT",
@@ -132,14 +132,14 @@ def test_history_endpoint_derives_fifo_points(monkeypatch: pytest.MonkeyPatch) -
                     unit_price_eur=110.0,
                     fee_eur=1.0,
                     total_eur=110.0,
-                    ts=tx2_ts,
+                    trade_date=tx2_ts,
                     notes=None,
-                    external_ref="tx-2",
+                    transaction_uid="tx-2",
                 ),
                 Transaction(
                     account_id="ACC-456",
                     source="TEST",
-                    type_portefeuille="PEA",
+                    portfolio_type="PEA",
                     operation="SELL",
                     asset="MSFT",
                     symbol_or_isin="MSFT",
@@ -147,9 +147,9 @@ def test_history_endpoint_derives_fifo_points(monkeypatch: pytest.MonkeyPatch) -
                     unit_price_eur=120.0,
                     fee_eur=0.5,
                     total_eur=60.0,
-                    ts=tx3_ts,
+                    trade_date=tx3_ts,
                     notes=None,
-                    external_ref="tx-3",
+                    transaction_uid="tx-3",
                 ),
             ]
         )
@@ -222,7 +222,7 @@ def test_history_endpoint_includes_dividends(monkeypatch: pytest.MonkeyPatch) ->
             Transaction(
                 account_id="ACC-789",
                 source="TEST",
-                type_portefeuille="PEA",
+                portfolio_type="PEA",
                 operation="BUY",
                 asset="T",
                 symbol_or_isin="T",
@@ -230,14 +230,14 @@ def test_history_endpoint_includes_dividends(monkeypatch: pytest.MonkeyPatch) ->
                 unit_price_eur=50.0,
                 fee_eur=0.0,
                 total_eur=100.0,
-                ts=datetime(2024, 1, 5, tzinfo=timezone.utc),
+                trade_date=datetime(2024, 1, 5, tzinfo=timezone.utc),
                 notes=None,
-                external_ref="tx-1",
+                transaction_uid="tx-1",
             ),
             Transaction(
                 account_id="ACC-789",
                 source="TEST",
-                type_portefeuille="PEA",
+                portfolio_type="PEA",
                 operation="DIVIDEND",
                 asset="T",
                 symbol_or_isin="T",
@@ -245,9 +245,9 @@ def test_history_endpoint_includes_dividends(monkeypatch: pytest.MonkeyPatch) ->
                 unit_price_eur=0.0,
                 fee_eur=0.0,
                 total_eur=10.0,
-                ts=datetime(2024, 2, 1, tzinfo=timezone.utc),
+                trade_date=datetime(2024, 2, 1, tzinfo=timezone.utc),
                 notes=None,
-                external_ref="tx-2",
+                transaction_uid="tx-2",
             ),
         ]
 
@@ -265,7 +265,7 @@ def test_history_endpoint_includes_dividends(monkeypatch: pytest.MonkeyPatch) ->
         app.include_router(portfolio_api.router)
         app.dependency_overrides[deps.get_db] = override_get_db
 
-        def fake_get_market_price(symbol: str, type_portefeuille: str | None) -> float:
+        def fake_get_market_price(symbol: str, portfolio_type: str | None) -> float:
             return 55.0
 
         monkeypatch.setattr(portfolio, "get_market_price", fake_get_market_price)
@@ -306,7 +306,7 @@ def test_holdings_endpoint_reuses_cached_holdings(monkeypatch: pytest.MonkeyPatc
                 Transaction(
                     account_id="ACC-123",
                     source="TEST",
-                    type_portefeuille="PEA",
+                    portfolio_type="PEA",
                     operation="BUY",
                     asset="AAPL",
                     symbol_or_isin="AAPL",
@@ -314,9 +314,9 @@ def test_holdings_endpoint_reuses_cached_holdings(monkeypatch: pytest.MonkeyPatc
                     unit_price_eur=100.0,
                     fee_eur=0.0,
                     total_eur=100.0,
-                    ts=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                    trade_date=datetime(2024, 1, 1, tzinfo=timezone.utc),
                     notes=None,
-                    external_ref="tx-1",
+                    transaction_uid="tx-1",
                 )
             ]
         )

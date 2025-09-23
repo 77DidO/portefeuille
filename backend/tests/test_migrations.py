@@ -22,8 +22,8 @@ LEGACY_TABLE_DEFINITIONS = {
             total_eur FLOAT NOT NULL,
             ts DATETIME NOT NULL,
             notes TEXT,
-            external_ref VARCHAR(128) NOT NULL,
-            CONSTRAINT uq_transactions_external_ref UNIQUE (external_ref)
+            transaction_uid VARCHAR(128) NOT NULL,
+            CONSTRAINT uq_transactions_transaction_uid UNIQUE (transaction_uid)
         )
     """,
     "holdings": """
@@ -138,7 +138,17 @@ def test_run_migrations_from_legacy_schema(tmp_path, monkeypatch):
             inspector = inspect(connection)
             assert inspector.has_table("alembic_version")
             transactions_columns = {col["name"] for col in inspector.get_columns("transactions")}
-            assert {"fee_asset", "fx_rate"}.issubset(transactions_columns)
+            expected_columns = {
+                "portfolio_type",
+                "trade_date",
+                "symbol",
+                "isin",
+                "mic",
+                "fee_asset",
+                "fee_quantity",
+                "transaction_uid",
+            }
+            assert expected_columns.issubset(transactions_columns)
             holdings_columns = {col["name"] for col in inspector.get_columns("holdings")}
             assert "type_portefeuille" in holdings_columns
     finally:

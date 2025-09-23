@@ -23,19 +23,19 @@ def _add_transaction(
     db,
     *,
     account_id: str | None,
-    type_portefeuille: str,
+    portfolio_type: str,
     operation: str,
     symbol: str,
     quantity: float,
     unit_price: float,
     total: float,
-    ts: datetime,
-    external_ref: str,
+    trade_date: datetime,
+    transaction_uid: str,
 ) -> None:
     tx = Transaction(
         account_id=account_id,
         source="TEST",
-        type_portefeuille=type_portefeuille,
+        portfolio_type=portfolio_type,
         operation=operation,
         asset=symbol,
         symbol_or_isin=symbol,
@@ -43,9 +43,9 @@ def _add_transaction(
         unit_price_eur=unit_price,
         fee_eur=0.0,
         total_eur=total,
-        ts=ts,
+        trade_date=trade_date,
         notes=None,
-        external_ref=external_ref,
+        transaction_uid=transaction_uid,
     )
     db.add(tx)
 
@@ -110,14 +110,14 @@ def test_get_market_price_uses_euronext_lookup(monkeypatch):
         _add_transaction(
             db,
             account_id=None,
-            type_portefeuille="PEA",
+            portfolio_type="PEA",
             operation="BUY",
             symbol="FR0000123456",
             quantity=2.0,
             unit_price=100.0,
             total=200.0,
-            ts=datetime(2024, 1, 1, tzinfo=timezone.utc),
-            external_ref="buy",
+            trade_date=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            transaction_uid="buy",
         )
         db.commit()
 
@@ -188,14 +188,14 @@ def test_get_market_price_uses_euronext_search(monkeypatch):
         _add_transaction(
             db,
             account_id=None,
-            type_portefeuille="PEA",
+            portfolio_type="PEA",
             operation="BUY",
             symbol="FR0000123456",
             quantity=3.0,
             unit_price=100.0,
             total=300.0,
-            ts=datetime(2024, 1, 1, tzinfo=timezone.utc),
-            external_ref="buy",
+            trade_date=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            transaction_uid="buy",
         )
         db.commit()
 
@@ -255,8 +255,8 @@ def test_get_market_price_prefers_euronext(monkeypatch):
 
     resolved_calls: list[tuple[str, str | None]] = []
 
-    def fake_resolve(symbol: str, type_portefeuille: str | None) -> str:
-        resolved_calls.append((symbol, type_portefeuille))
+    def fake_resolve(symbol: str, portfolio_type: str | None) -> str:
+        resolved_calls.append((symbol, portfolio_type))
         return "MC.PA"
 
     fetch_calls: list[str] = []
@@ -283,7 +283,7 @@ def test_get_market_price_prefers_euronext(monkeypatch):
 def test_get_market_price_falls_back_to_yahoo(monkeypatch):
     _clear_portfolio_caches()
 
-    def fake_resolve(symbol: str, type_portefeuille: str | None) -> str:
+    def fake_resolve(symbol: str, portfolio_type: str | None) -> str:
         return "MC.PA"
 
     fetch_calls: list[str] = []
@@ -314,7 +314,7 @@ def test_get_market_price_falls_back_to_yahoo_with_isin(monkeypatch):
     _clear_portfolio_caches()
     portfolio.clear_quote_alias_cache()
 
-    def fake_resolve(symbol: str, type_portefeuille: str | None) -> str:
+    def fake_resolve(symbol: str, portfolio_type: str | None) -> str:
         return "FR0000123456"
 
     def fake_iter(original: str, resolved: str) -> tuple[str, ...]:
@@ -356,7 +356,7 @@ def test_get_market_price_adjusts_yahoo_symbol_for_isin(monkeypatch):
     _clear_portfolio_caches()
     portfolio.clear_quote_alias_cache()
 
-    def fake_resolve(symbol: str, type_portefeuille: str | None) -> str:
+    def fake_resolve(symbol: str, portfolio_type: str | None) -> str:
         return "FR0000123456"
 
     def fake_iter(original: str, resolved: str) -> tuple[str, ...]:
@@ -405,26 +405,26 @@ def test_compute_holdings_separates_same_symbol(monkeypatch, account_ids):
         _add_transaction(
             db,
             account_id=account_pea,
-            type_portefeuille="PEA",
+            portfolio_type="PEA",
             operation="BUY",
             symbol="AAPL",
             quantity=10.0,
             unit_price=100.0,
             total=1000.0,
-            ts=datetime(2024, 1, 1, tzinfo=timezone.utc),
-            external_ref="pea-buy",
+            trade_date=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            transaction_uid="pea-buy",
         )
         _add_transaction(
             db,
             account_id=account_cto,
-            type_portefeuille="CTO",
+            portfolio_type="CTO",
             operation="BUY",
             symbol="AAPL",
             quantity=5.0,
             unit_price=110.0,
             total=550.0,
-            ts=datetime(2024, 1, 2, tzinfo=timezone.utc),
-            external_ref="cto-buy",
+            trade_date=datetime(2024, 1, 2, tzinfo=timezone.utc),
+            transaction_uid="cto-buy",
         )
         db.commit()
 
@@ -433,8 +433,8 @@ def test_compute_holdings_separates_same_symbol(monkeypatch, account_ids):
             ("AAPL", "CTO"): 150.0,
         }
 
-        def fake_get_market_price(symbol: str, type_portefeuille: str | None) -> float:
-            key = (symbol, (type_portefeuille or "").upper())
+        def fake_get_market_price(symbol: str, portfolio_type: str | None) -> float:
+            key = (symbol, (portfolio_type or "").upper())
             if key not in prices:
                 raise AssertionError(f"unexpected price lookup: {key}")
             return prices[key]

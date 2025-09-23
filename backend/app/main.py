@@ -73,23 +73,25 @@ def seed_demo() -> None:
     try:
         if db.query(Transaction).count() == 0 and settings.demo_seed:
             from datetime import datetime, timezone
-            from app.core.security import sign_external_ref
+
+            from app.core.security import sign_transaction_uid
 
             sample = Transaction(
                 source="binance",
-                type_portefeuille="CRYPTO",
+                portfolio_type="CRYPTO",
                 operation="BUY",
                 asset="Bitcoin",
                 symbol_or_isin="BTC",
+                symbol="BTC",
                 quantity=0.01,
                 unit_price_eur=60000.0,
                 fee_eur=1.0,
                 fee_asset="EUR",
-                fx_rate=1.0,
+                fee_quantity=None,
                 total_eur=600.0,
-                ts=datetime(2024, 1, 10, 12, 0, tzinfo=timezone.utc),
+                trade_date=datetime(2024, 1, 10, 12, 0, tzinfo=timezone.utc),
                 notes="Seed demo",
-                external_ref=sign_external_ref({"sample": "tx1"}),
+                transaction_uid=sign_transaction_uid({"sample": "tx1"}),
             )
             db.add(sample)
             db.commit()
