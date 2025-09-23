@@ -41,7 +41,7 @@ Un script Bash est fourni pour installer les dépendances et lancer les deux ser
 Le script crée un environnement virtuel Python local (`.venv`), installe les dépendances backend, exécute `npm install` dans `frontend/` puis lance :
 
 - Backend : `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
-- Frontend : `NEXT_PUBLIC_API_BASE=http://localhost:8000 npm run dev`
+- Frontend : `npm run dev` (la variable `NEXT_PUBLIC_API_BASE` reste supportée pour cibler une URL spécifique ; sans valeur, l'UI utilise l'origine du navigateur et retombe sur `http://localhost:8000` en local)
 
 Appuyez sur `Ctrl+C` pour arrêter les deux services.
 
@@ -54,7 +54,7 @@ Set-ExecutionPolicy -Scope Process RemoteSigned
 ./init_local.ps1
 ```
 
-Le script réplique les étapes Linux : création de l'environnement virtuel, installation des dépendances puis lancement des serveurs backend et frontend (`NEXT_PUBLIC_API_BASE` pointant vers `http://localhost:8000`).
+Le script réplique les étapes Linux : création de l'environnement virtuel, installation des dépendances puis lancement des serveurs backend et frontend (le frontend retombe par défaut sur `http://localhost:8000` lorsqu'il est ouvert en `localhost`).
 
 ### Installation manuelle
 
@@ -83,10 +83,10 @@ Le script réplique les étapes Linux : création de l'environnement virtuel, in
    ```bash
    cd frontend
    npm install
-   NEXT_PUBLIC_API_BASE=http://localhost:8000 npm run dev
+   npm run dev
    ```
 
-Le backend est accessible sur http://localhost:8000 et le frontend sur http://localhost:3000.
+Le backend est accessible sur http://localhost:8000 et le frontend sur http://localhost:3000 (l'UI détecte automatiquement cette URL backend lorsqu'elle est servie depuis `localhost`).
 
 ## Configuration applicative
 
