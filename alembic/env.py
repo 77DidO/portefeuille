@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from logging.config import fileConfig
 from pathlib import Path
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
+
+BACKEND_PATH = Path(__file__).resolve().parents[1] / "backend"
+if str(BACKEND_PATH) not in sys.path:
+    sys.path.append(str(BACKEND_PATH))
 
 from app.core.config import settings
 from app.db.base import Base
