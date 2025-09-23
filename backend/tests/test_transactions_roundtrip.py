@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import zipfile
+from datetime import datetime, timezone
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -11,18 +12,20 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api import deps
+from app.api import export as export_api
 from app.api import transactions as transactions_api
 from app.models.base import Base
 from app.models.transactions import Transaction
 from app.services.exporter import export_zip
-from app.services.importer import Importer, compute_transaction_uid_from_row
-
-
-CSV_HEADER = (
-    "id,source,portfolio_type,operation,date,asset,symbol,isin,mic,"
-    "quantity,unit_price_eur,total_eur,fee_eur,fee_asset,fee_quantity,notes\n"
+from app.services.importer import (
+    Importer,
+    REQUIRED_COLUMNS,
+    compute_transaction_uid_from_row,
 )
-CSV_COLUMNS = CSV_HEADER.strip().split(",")
+
+
+CSV_COLUMNS = list(REQUIRED_COLUMNS["transactions.csv"])
+CSV_HEADER = ",".join(CSV_COLUMNS) + "\n"
 
 
 def _create_session():
@@ -41,13 +44,45 @@ def test_transactions_roundtrip_preserves_fee_fields() -> None:
     db = SessionLocal()
     try:
         importer = Importer(db)
-        csv_content = CSV_HEADER
-        csv_content += (
-            "tx-1,BROKER_A,CTO,BUY,2024-01-01T12:00:00+00:00,ASSET-1,AAA,,,1.0,100.0,100.0,1.0,USD,,\n"
-        )
-        csv_content += (
-            "tx-2,BROKER_B,CTO,SELL,2024-01-02T12:00:00+00:00,ASSET-2,,US1234567890,XPAR,2.0,50.0,100.0,,BTC,0.0001,Second transaction\n"
-        )
+        rows = [
+            [
+                "tx-1",
+                "BROKER_A",
+                "CTO",
+                "BUY",
+                "2024-01-01T12:00:00+00:00",
+                "ASSET-1",
+                "AAA",
+                "",
+                "",
+                "1.0",
+                "100.0",
+                "100.0",
+                "1.0",
+                "USD",
+                "",
+                "",
+            ],
+            [
+                "tx-2",
+                "BROKER_B",
+                "CTO",
+                "SELL",
+                "2024-01-02T12:00:00+00:00",
+                "ASSET-2",
+                "",
+                "US1234567890",
+                "XPAR",
+                "2.0",
+                "50.0",
+                "100.0",
+                "",
+                "BTC",
+                "0.0001",
+                "Second transaction",
+            ],
+        ]
+        csv_content = CSV_HEADER + "".join(",".join(row) + "\n" for row in rows)
 
         importer.import_transactions_csv(csv_content)
 
@@ -57,21 +92,22 @@ def test_transactions_roundtrip_preserves_fee_fields() -> None:
         assert transactions["tx-2"].fee_asset == "BTC"
         assert transactions["tx-2"].fee_quantity == 0.0001
         assert transactions["tx-2"].fee_eur == 0
+        assert transactions["tx-2"].mic == "XPAR"
 
         archive = export_zip(db)
         with zipfile.ZipFile(io.BytesIO(archive)) as zf:
             with zf.open("transactions.csv") as transactions_file:
                 reader = csv.DictReader(io.TextIOWrapper(transactions_file, encoding="utf-8"))
                 assert reader.fieldnames == CSV_COLUMNS
-                rows = {row["id"]: row for row in reader}
+                exported_rows = {row["id"]: row for row in reader}
 
-        assert rows["tx-1"]["fee_asset"] == "USD"
-        assert rows["tx-1"]["fee_quantity"] == ""
-        assert rows["tx-2"]["fee_asset"] == "BTC"
-        assert rows["tx-2"]["fee_quantity"] == "0.0001"
-        assert rows["tx-2"]["fee_eur"] == "0"
-        assert rows["tx-2"]["isin"] == "US1234567890"
-        assert rows["tx-2"]["mic"] == "XPAR"
+        assert exported_rows["tx-1"]["fee_asset"] == "USD"
+        assert exported_rows["tx-1"]["fee_quantity"] == ""
+        assert exported_rows["tx-2"]["fee_asset"] == "BTC"
+        assert exported_rows["tx-2"]["fee_quantity"] == "0.0001"
+        assert exported_rows["tx-2"]["fee_eur"] == "0"
+        assert exported_rows["tx-2"]["isin"] == "US1234567890"
+        assert exported_rows["tx-2"]["mic"] == "XPAR"
 
         def override_get_db():
             session = SessionLocal()
@@ -93,9 +129,70 @@ def test_transactions_roundtrip_preserves_fee_fields() -> None:
         assert data_by_ref["tx-1"]["fee_asset"] == "USD"
         assert data_by_ref["tx-2"]["fee_asset"] == "BTC"
         assert data_by_ref["tx-2"]["fee_eur"] == 0
+        assert data_by_ref["tx-2"]["mic"] == "XPAR"
     finally:
         db.close()
         engine.dispose()
+
+
+def test_export_zip_route_exposes_new_transactions_columns() -> None:
+    engine, SessionLocal = _create_session()
+    db = SessionLocal()
+    try:
+        db.add(
+            Transaction(
+                source="BROKER_C",
+                portfolio_type="CTO",
+                operation="BUY",
+                asset="ASSET-3",
+                symbol_or_isin="ASSET-3",
+                symbol="AS3",
+                isin="FR0000000001",
+                mic="XPAR",
+                quantity=3.0,
+                unit_price_eur=25.0,
+                fee_eur=0.75,
+                fee_asset="EUR",
+                fee_quantity=None,
+                total_eur=75.0,
+                trade_date=datetime(2024, 1, 3, 12, 0, tzinfo=timezone.utc),
+                notes="Export via API",
+                transaction_uid="tx-api",
+            )
+        )
+        db.commit()
+
+        def override_get_db():
+            session = SessionLocal()
+            try:
+                yield session
+            finally:
+                session.close()
+
+        app = FastAPI()
+        app.include_router(export_api.router)
+        app.dependency_overrides[deps.get_db] = override_get_db
+
+        client = TestClient(app)
+        response = client.get("/export/zip")
+        assert response.status_code == 200
+
+        with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
+            with zf.open("transactions.csv") as transactions_file:
+                reader = csv.DictReader(io.TextIOWrapper(transactions_file, encoding="utf-8"))
+                assert reader.fieldnames == CSV_COLUMNS
+                rows = list(reader)
+
+        assert len(rows) == 1
+        exported = rows[0]
+        assert exported["id"] == "tx-api"
+        assert exported["mic"] == "XPAR"
+        assert exported["fee_asset"] == "EUR"
+        assert exported["fee_quantity"] == ""
+    finally:
+        db.close()
+        engine.dispose()
+
 
 
 def test_transactions_import_is_idempotent_with_inserted_rows() -> None:
