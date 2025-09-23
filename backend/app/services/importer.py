@@ -68,6 +68,22 @@ def _clean_text(value: str | None) -> str:
     return value.strip() if value is not None else ""
 
 
+def _normalize_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    if text.casefold() == "none":
+        return None
+    return text
+
+
+def _normalize_optional_text_to_string(value: str | None) -> str:
+    normalized = _normalize_optional_text(value)
+    return normalized if normalized is not None else ""
+
+
 def _parse_required_text(value: str | None, field: str) -> str:
     text = _clean_text(value)
     if not text:
@@ -117,12 +133,13 @@ def _build_normalized_external_ref_fields(
     total_eur: Decimal,
     ts: datetime,
 ) -> Dict[str, str]:
+    symbol_or_isin = _normalize_optional_text(row.get("symbol_or_isin"))
     return {
         "source": _parse_required_text(row.get("source"), "source"),
         "type_portefeuille": _parse_required_text(row.get("type_portefeuille"), "type_portefeuille"),
         "operation": _parse_required_text(row.get("operation"), "operation"),
         "asset": _parse_required_text(row.get("asset"), "asset"),
-        "symbol_or_isin": _clean_text(row.get("symbol_or_isin")),
+        "symbol_or_isin": symbol_or_isin or "",
         "quantity": _decimal_to_string(quantity),
         "unit_price_eur": _decimal_to_string(unit_price_eur),
         "fee_eur": _decimal_to_string(fee_eur),
@@ -136,7 +153,7 @@ def _build_normalized_external_ref_fields(
 def _prepare_row_for_external_ref(
     row: Dict[str, str]
 ) -> Tuple[Dict[str, str], Decimal, Decimal, Decimal, Decimal, Decimal, str, datetime]:
-    fee_asset = _clean_text(row.get("fee_asset"))
+    fee_asset = _normalize_optional_text_to_string(row.get("fee_asset"))
     quantity = _parse_decimal_field(row.get("quantity"), default=None, field="quantity")
     unit_price_eur = _parse_decimal_field(
         row.get("unit_price_eur"),
@@ -273,7 +290,7 @@ class Importer:
                     "fx_rate": float(fx_rate),
                     "total_eur": float(total_eur),
                     "ts": ts,
-                    "notes": row.get("notes") or None,
+                    "notes": _normalize_optional_text(row.get("notes")),
                     "external_ref": external_ref,
                 }
             except Exception as exc:  # noqa: BLE001

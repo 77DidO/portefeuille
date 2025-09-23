@@ -179,3 +179,78 @@ def test_transactions_import_updates_identical_rows_with_new_external_ref() -> N
     finally:
         db.close()
         engine.dispose()
+
+
+def test_transactions_import_handles_none_string_notes() -> None:
+    engine, SessionLocal = _create_session()
+    db = SessionLocal()
+    try:
+        importer = Importer(db)
+        header = (
+            "source,type_portefeuille,operation,asset,symbol_or_isin,quantity,unit_price_eur," +
+            "fee_eur,fee_asset,fx_rate,total_eur,ts,notes,external_ref\n"
+        )
+        original_ts = "2024-01-01T12:00:00+00:00"
+        original_row = (
+            f"BROKER_A,CTO,BUY,ASSET-1,AAA,1,100,0,,1,100,{original_ts},,legacy_ref\n"
+        )
+
+        importer.import_transactions_csv(header + original_row)
+
+        transaction = db.query(Transaction).one()
+        assert transaction.notes is None
+
+        archive = export_zip(db)
+        with zipfile.ZipFile(io.BytesIO(archive)) as zf:
+            with zf.open("transactions.csv") as transactions_file:
+                reader = csv.DictReader(io.TextIOWrapper(transactions_file, encoding="utf-8"))
+                exported_rows = list(reader)
+
+        assert len(exported_rows) == 1
+        exported_row = exported_rows[0]
+        # Some spreadsheet tools serialise empty cells as "None" when round-tripping CSV files.
+        exported_row["notes"] = exported_row["notes"] or "None"
+        exported_row["ts"] = original_ts
+
+        reimport_columns = [
+            "source",
+            "type_portefeuille",
+            "operation",
+            "asset",
+            "symbol_or_isin",
+            "quantity",
+            "unit_price_eur",
+            "fee_eur",
+            "fee_asset",
+            "fx_rate",
+            "total_eur",
+            "ts",
+            "notes",
+            "external_ref",
+        ]
+        exported_row["external_ref"] = ""
+        reimport_content = io.StringIO()
+        writer = csv.writer(reimport_content)
+        writer.writerow(reimport_columns)
+        writer.writerow([exported_row[column] for column in reimport_columns])
+
+        reimport_buffer = io.BytesIO()
+        with zipfile.ZipFile(reimport_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("transactions.csv", reimport_content.getvalue())
+
+        reimport_buffer.seek(0)
+        importer.import_zip(reimport_buffer.read())
+
+        transactions = db.query(Transaction).all()
+        assert len(transactions) == 1
+
+        expected_row_for_ref = {column: exported_row[column] for column in reimport_columns}
+        expected_row_for_ref["external_ref"] = ""
+        expected_external_ref = compute_external_ref_from_row(expected_row_for_ref)
+
+        refreshed_transaction = transactions[0]
+        assert refreshed_transaction.external_ref == expected_external_ref
+        assert refreshed_transaction.notes is None
+    finally:
+        db.close()
+        engine.dispose()
