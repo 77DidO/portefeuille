@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "./.tests-dist",
+    "module": "commonjs"
+  },
+  "include": [
+    "lib/base-url.ts",
+    "lib/base-url.test.ts"
+  ]
+}
