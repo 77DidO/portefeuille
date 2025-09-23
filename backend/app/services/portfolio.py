@@ -700,7 +700,7 @@ def get_market_price(symbol: str, type_portefeuille: str | None) -> float:
 
 @cached(cache=_cache, key=lambda *_args, **_kwargs: "portfolio_holdings")
 def compute_holdings(db: Session) -> Tuple[List[HoldingView], Dict[str, float]]:
-    txs: List[Transaction] = db.query(Transaction).order_by(Transaction.ts.asc(), Transaction.id.asc()).all()
+    txs: List[Transaction] = db.query(Transaction).order_by(Transaction.trade_date.asc(), Transaction.id.asc()).all()
     fifo = FIFOPortfolio()
     portfolio_types: Dict[PortfolioKey, str] = {}
     symbol_labels: Dict[PortfolioKey, str] = {}
@@ -710,8 +710,8 @@ def compute_holdings(db: Session) -> Tuple[List[HoldingView], Dict[str, float]]:
     for tx in txs:
         raw_symbol = (tx.symbol_or_isin or tx.asset or "").strip()
         symbol = _normalize_symbol(raw_symbol or tx.asset)
-        portfolio_type = _normalize_portfolio_type(tx.type_portefeuille)
-        key = _make_portfolio_key(tx.type_portefeuille, raw_symbol or tx.asset, tx.account_id)
+        portfolio_type = _normalize_portfolio_type(tx.portfolio_type)
+        key = _make_portfolio_key(tx.portfolio_type, raw_symbol or tx.asset, tx.account_id)
         total_eur = tx.total_eur
         portfolio_types[key] = portfolio_type
         if key not in symbol_labels or not symbol_labels[key]:
@@ -836,11 +836,11 @@ def compute_holding_detail(db: Session, identifier: str) -> HoldingDetailView:
                 func.upper(Transaction.asset) == symbol_normalized,
             )
         )
-        .filter(func.upper(Transaction.type_portefeuille) == type_normalized)
+        .filter(func.upper(Transaction.portfolio_type) == type_normalized)
     )
     if account_normalized:
         tx_query = tx_query.filter(func.upper(Transaction.account_id) == account_normalized)
-    tx_rows = tx_query.order_by(Transaction.ts.asc(), Transaction.id.asc()).all()
+    tx_rows = tx_query.order_by(Transaction.trade_date.asc(), Transaction.id.asc()).all()
 
     fifo = FIFOPortfolio()
     fifo_key = _make_portfolio_key(
@@ -870,7 +870,7 @@ def compute_holding_detail(db: Session, identifier: str) -> HoldingDetailView:
         pl_pct = (pl_eur / cost_basis * 100.0) if cost_basis else 0.0
         history.append(
             HoldingHistoryPointView(
-                ts=tx.ts,
+                ts=tx.trade_date,
                 quantity=qty,
                 invested_eur=cost_basis,
                 market_price_eur=market_price,

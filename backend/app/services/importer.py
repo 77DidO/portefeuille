@@ -34,7 +34,7 @@ REQUIRED_COLUMNS = {
     ]
 }
 
-EXTERNAL_REF_FIELDS = [
+TRANSACTION_UID_FIELDS = [
     "source",
     "portfolio_type",
     "operation",
@@ -52,7 +52,7 @@ EXTERNAL_REF_FIELDS = [
     "notes",
 ]
 
-EXTERNAL_REF_SEPARATOR = "\x1f"
+TRANSACTION_UID_SEPARATOR = "\x1f"
 
 FUNCTIONAL_TRANSACTION_FIELDS = [
     "source",
@@ -68,13 +68,13 @@ FUNCTIONAL_TRANSACTION_FIELDS = [
     "fee_asset",
     "fee_quantity",
     "total_eur",
-    "date",
+    "trade_date",
     "notes",
 ]
 
 TRANSACTION_FIELD_MAPPING = {
     "source": "source",
-    "portfolio_type": "type_portefeuille",
+    "portfolio_type": "portfolio_type",
     "operation": "operation",
     "asset": "asset",
     "symbol": "symbol",
@@ -86,7 +86,7 @@ TRANSACTION_FIELD_MAPPING = {
     "fee_asset": "fee_asset",
     "fee_quantity": "fee_quantity",
     "total_eur": "total_eur",
-    "date": "ts",
+    "trade_date": "trade_date",
     "notes": "notes",
 }
 
@@ -163,7 +163,7 @@ def _decimal_to_string(value: Decimal) -> str:
     return formatted
 
 
-def _build_normalized_external_ref_fields(
+def _build_normalized_transaction_uid_fields(
     *,
     row_id: str | None,
     source: str,
@@ -179,7 +179,7 @@ def _build_normalized_external_ref_fields(
     fee_eur: Decimal,
     fee_asset: str,
     fee_quantity: Decimal | None,
-    ts: datetime,
+    trade_date: datetime,
     notes: str,
 ) -> Dict[str, str]:
     normalized: Dict[str, str] = {
@@ -187,7 +187,7 @@ def _build_normalized_external_ref_fields(
         "source": source,
         "portfolio_type": portfolio_type,
         "operation": operation,
-        "date": ts.isoformat(),
+        "date": trade_date.isoformat(),
         "asset": asset,
         "symbol": symbol or "",
         "isin": isin or "",
@@ -203,7 +203,7 @@ def _build_normalized_external_ref_fields(
     return normalized
 
 
-def _prepare_row_for_external_ref(
+def _prepare_row_for_transaction_uid(
     row: Dict[str, str]
 ) -> Tuple[
     Dict[str, str],
@@ -238,9 +238,9 @@ def _prepare_row_for_external_ref(
     total_eur = _parse_decimal_field(row.get("total_eur"), default=None, field="total_eur")
     fee_asset = _normalize_optional_text_to_string(row.get("fee_asset"))
     fee_quantity = _parse_optional_decimal(row.get("fee_quantity"))
-    ts = _parse_timestamp(row.get("date"), field="date")
+    trade_date = _parse_timestamp(row.get("date"), field="date")
     notes = _normalize_optional_text_to_string(row.get("notes"))
-    normalized_fields = _build_normalized_external_ref_fields(
+    normalized_fields = _build_normalized_transaction_uid_fields(
         row_id=row_id,
         source=source,
         portfolio_type=portfolio_type,
@@ -255,7 +255,7 @@ def _prepare_row_for_external_ref(
         fee_eur=fee_eur,
         fee_asset=fee_asset,
         fee_quantity=fee_quantity,
-        ts=ts,
+        trade_date=trade_date,
         notes=notes,
     )
     return (
@@ -266,7 +266,7 @@ def _prepare_row_for_external_ref(
         total_eur,
         fee_asset,
         fee_quantity,
-        ts,
+        trade_date,
         symbol,
         isin,
         mic,
@@ -275,29 +275,31 @@ def _prepare_row_for_external_ref(
     )
 
 
-def build_external_ref(row_id: str | None, normalized_fields: Mapping[str, str]) -> str:
-    """Return an explicit reference or generate a deterministic one for a CSV row."""
+def build_transaction_uid(row_id: str | None, normalized_fields: Mapping[str, str]) -> str:
+    """Return an explicit identifier or generate a deterministic one for a CSV row."""
 
     normalized_id = _normalize_optional_text(row_id)
     if normalized_id:
         return normalized_id
 
-    missing = [field for field in EXTERNAL_REF_FIELDS if field not in normalized_fields]
+    missing = [field for field in TRANSACTION_UID_FIELDS if field not in normalized_fields]
     if missing:
         raise ValueError(
-            "Champs manquants pour générer external_ref: " + ", ".join(missing)
+            "Champs manquants pour générer transaction_uid: " + ", ".join(missing)
         )
 
-    payload = EXTERNAL_REF_SEPARATOR.join(normalized_fields[field] for field in EXTERNAL_REF_FIELDS)
+    payload = TRANSACTION_UID_SEPARATOR.join(
+        normalized_fields[field] for field in TRANSACTION_UID_FIELDS
+    )
     digest = hashlib.sha1(payload.encode("utf-8")).hexdigest()
     return f"import_{digest}"
 
 
-def compute_external_ref_from_row(row: Dict[str, str]) -> str:
-    """Compute the external reference for a CSV row, normalising its values if needed."""
+def compute_transaction_uid_from_row(row: Dict[str, str]) -> str:
+    """Compute the transaction UID for a CSV row, normalising its values if needed."""
 
-    normalized_fields, *_, row_id = _prepare_row_for_external_ref(row)
-    return build_external_ref(row_id, normalized_fields)
+    normalized_fields, *_, row_id = _prepare_row_for_transaction_uid(row)
+    return build_transaction_uid(row_id, normalized_fields)
 
 
 class ImportErrorDetail(Exception):
@@ -374,14 +376,14 @@ class Importer:
                     total_eur,
                     fee_asset,
                     fee_quantity,
-                    ts,
+                    trade_date,
                     symbol,
                     isin,
                     mic,
                     notes,
                     row_id,
-                ) = _prepare_row_for_external_ref(row)
-                external_ref = build_external_ref(row_id, normalized_fields)
+                ) = _prepare_row_for_transaction_uid(row)
+                transaction_uid = build_transaction_uid(row_id, normalized_fields)
                 lookup_data = {
                     "source": normalized_fields["source"],
                     "portfolio_type": normalized_fields["portfolio_type"],
@@ -396,12 +398,12 @@ class Importer:
                     "fee_asset": fee_asset or None,
                     "fee_quantity": float(fee_quantity) if fee_quantity is not None else None,
                     "total_eur": float(total_eur),
-                    "date": ts,
+                    "trade_date": trade_date,
                     "notes": _normalize_optional_text(notes) if notes else None,
                 }
                 data = {
                     "source": lookup_data["source"],
-                    "type_portefeuille": normalized_fields["portfolio_type"],
+                    "portfolio_type": normalized_fields["portfolio_type"],
                     "operation": lookup_data["operation"],
                     "asset": lookup_data["asset"],
                     "symbol": symbol,
@@ -413,18 +415,17 @@ class Importer:
                     "fee_eur": lookup_data["fee_eur"],
                     "fee_asset": lookup_data["fee_asset"],
                     "fee_quantity": lookup_data["fee_quantity"],
-                    "fx_rate": 1.0,
                     "total_eur": lookup_data["total_eur"],
-                    "ts": ts,
+                    "trade_date": trade_date,
                     "notes": lookup_data["notes"],
-                    "external_ref": external_ref,
+                    "transaction_uid": transaction_uid,
                 }
             except Exception as exc:  # noqa: BLE001
                 raise ImportErrorDetail(str(exc), row_number=idx) from exc
 
             existing = (
                 self.db.query(Transaction)
-                .filter(Transaction.external_ref == external_ref)
+                .filter(Transaction.transaction_uid == transaction_uid)
                 .one_or_none()
             )
 

@@ -1,2 +1,2 @@
-id,source,type_portefeuille,operation,asset,symbol_or_isin,quantity,unit_price_eur,fee_eur,fee_asset,fx_rate,total_eur,ts,notes,external_ref
-tx_demo_1,binance,CRYPTO,BUY,Ethereum,ETH,0.0393,3815.58,0.0,EUR,1.0,150.0,2025-09-19T00:36:05Z,demo,binance_123
+id,source,portfolio_type,operation,date,asset,symbol,isin,mic,quantity,unit_price_eur,total_eur,fee_eur,fee_asset,fee_quantity,notes
+tx_demo_1,binance,CRYPTO,BUY,2025-09-19T00:36:05Z,Ethereum,ETH,,BINANCE,0.0393,3815.58,150.0,0.0,EUR,,demo

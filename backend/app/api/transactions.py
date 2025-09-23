@@ -18,7 +18,7 @@ router = APIRouter(prefix="/transactions", tags=["transactions"])
 @router.get("/", response_model=list[TransactionResponse])
 def list_transactions(
     source: str | None = Query(None),
-    type_portefeuille: str | None = Query(None, alias="type"),
+    portfolio_type: str | None = Query(None, alias="type"),
     asset: str | None = Query(None),
     operation: str | None = Query(None),
     db: Session = Depends(deps.get_db),
@@ -27,14 +27,14 @@ def list_transactions(
 
     if source is not None:
         query = query.filter(Transaction.source == source)
-    if type_portefeuille is not None:
-        query = query.filter(Transaction.type_portefeuille == type_portefeuille)
+    if portfolio_type is not None:
+        query = query.filter(Transaction.portfolio_type == portfolio_type)
     if asset is not None:
         query = query.filter(Transaction.asset == asset)
     if operation is not None:
         query = query.filter(Transaction.operation == operation)
 
-    return query.order_by(Transaction.ts.desc()).limit(500).all()
+    return query.order_by(Transaction.trade_date.desc()).limit(500).all()
 
 
 @router.post("/import")

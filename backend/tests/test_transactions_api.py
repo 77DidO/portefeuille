@@ -36,7 +36,7 @@ def test_list_transactions_supports_filters() -> None:
                 Transaction(
                     account_id="ACC-1",
                     source="BROKER_A",
-                    type_portefeuille="PEA",
+                    portfolio_type="PEA",
                     operation="BUY",
                     asset="ASSET-1",
                     symbol_or_isin="ASSET-1",
@@ -44,14 +44,14 @@ def test_list_transactions_supports_filters() -> None:
                     unit_price_eur=100.0,
                     fee_eur=1.0,
                     total_eur=100.0,
-                    ts=base_ts,
+                    trade_date=base_ts,
                     notes=None,
-                    external_ref="tx-1",
+                    transaction_uid="tx-1",
                 ),
                 Transaction(
                     account_id="ACC-1",
                     source="BROKER_B",
-                    type_portefeuille="PEA",
+                    portfolio_type="PEA",
                     operation="BUY",
                     asset="ASSET-2",
                     symbol_or_isin="ASSET-2",
@@ -59,14 +59,14 @@ def test_list_transactions_supports_filters() -> None:
                     unit_price_eur=110.0,
                     fee_eur=1.0,
                     total_eur=110.0,
-                    ts=base_ts + timedelta(days=1),
+                    trade_date=base_ts + timedelta(days=1),
                     notes=None,
-                    external_ref="tx-2",
+                    transaction_uid="tx-2",
                 ),
                 Transaction(
                     account_id="ACC-1",
                     source="BROKER_A",
-                    type_portefeuille="CTO",
+                    portfolio_type="CTO",
                     operation="BUY",
                     asset="ASSET-3",
                     symbol_or_isin="ASSET-3",
@@ -74,14 +74,14 @@ def test_list_transactions_supports_filters() -> None:
                     unit_price_eur=120.0,
                     fee_eur=1.0,
                     total_eur=120.0,
-                    ts=base_ts + timedelta(days=2),
+                    trade_date=base_ts + timedelta(days=2),
                     notes=None,
-                    external_ref="tx-3",
+                    transaction_uid="tx-3",
                 ),
                 Transaction(
                     account_id="ACC-2",
                     source="BROKER_B",
-                    type_portefeuille="CTO",
+                    portfolio_type="CTO",
                     operation="SELL",
                     asset="ASSET-1",
                     symbol_or_isin="ASSET-1",
@@ -89,9 +89,9 @@ def test_list_transactions_supports_filters() -> None:
                     unit_price_eur=130.0,
                     fee_eur=1.0,
                     total_eur=65.0,
-                    ts=base_ts + timedelta(days=3),
+                    trade_date=base_ts + timedelta(days=3),
                     notes=None,
-                    external_ref="tx-4",
+                    transaction_uid="tx-4",
                 ),
             ]
         )
@@ -113,7 +113,7 @@ def test_list_transactions_supports_filters() -> None:
         response = client.get("/transactions/")
         assert response.status_code == 200
         payload = response.json()
-        assert [item["external_ref"] for item in payload] == [
+        assert [item["transaction_uid"] for item in payload] == [
             "tx-4",
             "tx-3",
             "tx-2",
@@ -123,22 +123,22 @@ def test_list_transactions_supports_filters() -> None:
         response = client.get("/transactions/", params={"source": "BROKER_A"})
         assert response.status_code == 200
         payload = response.json()
-        assert [item["external_ref"] for item in payload] == ["tx-3", "tx-1"]
+        assert [item["transaction_uid"] for item in payload] == ["tx-3", "tx-1"]
 
         response = client.get("/transactions/", params={"type": "PEA"})
         assert response.status_code == 200
         payload = response.json()
-        assert [item["external_ref"] for item in payload] == ["tx-2", "tx-1"]
+        assert [item["transaction_uid"] for item in payload] == ["tx-2", "tx-1"]
 
         response = client.get("/transactions/", params={"asset": "ASSET-1"})
         assert response.status_code == 200
         payload = response.json()
-        assert [item["external_ref"] for item in payload] == ["tx-4", "tx-1"]
+        assert [item["transaction_uid"] for item in payload] == ["tx-4", "tx-1"]
 
         response = client.get("/transactions/", params={"operation": "SELL"})
         assert response.status_code == 200
         payload = response.json()
-        assert [item["external_ref"] for item in payload] == ["tx-4"]
+        assert [item["transaction_uid"] for item in payload] == ["tx-4"]
 
     finally:
         db.close()

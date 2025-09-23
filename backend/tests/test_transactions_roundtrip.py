@@ -15,7 +15,7 @@ from app.api import transactions as transactions_api
 from app.models.base import Base
 from app.models.transactions import Transaction
 from app.services.exporter import export_zip
-from app.services.importer import Importer, compute_external_ref_from_row
+from app.services.importer import Importer, compute_transaction_uid_from_row
 
 
 CSV_HEADER = (
@@ -51,7 +51,7 @@ def test_transactions_roundtrip_preserves_fee_fields() -> None:
 
         importer.import_transactions_csv(csv_content)
 
-        transactions = {t.external_ref: t for t in db.query(Transaction).all()}
+        transactions = {t.transaction_uid: t for t in db.query(Transaction).all()}
         assert transactions["tx-1"].fee_asset == "USD"
         assert transactions["tx-1"].fee_quantity is None
         assert transactions["tx-2"].fee_asset == "BTC"
@@ -88,7 +88,7 @@ def test_transactions_roundtrip_preserves_fee_fields() -> None:
         response = client.get("/transactions/")
         assert response.status_code == 200
         payload = response.json()
-        data_by_ref = {item["external_ref"]: item for item in payload}
+        data_by_ref = {item["transaction_uid"]: item for item in payload}
 
         assert data_by_ref["tx-1"]["fee_asset"] == "USD"
         assert data_by_ref["tx-2"]["fee_asset"] == "BTC"
@@ -110,7 +110,7 @@ def test_transactions_import_is_idempotent_with_inserted_rows() -> None:
 
         importer.import_transactions_csv(CSV_HEADER + "".join(base_rows))
         existing_transactions = {
-            (t.source, t.operation, t.asset, t.ts.isoformat()): t.external_ref
+            (t.source, t.operation, t.asset, t.trade_date.isoformat()): t.transaction_uid
             for t in db.query(Transaction).all()
         }
 
@@ -121,9 +121,9 @@ def test_transactions_import_is_idempotent_with_inserted_rows() -> None:
         assert len(all_transactions) == 3
 
         for transaction in all_transactions:
-            key = (transaction.source, transaction.operation, transaction.asset, transaction.ts.isoformat())
+            key = (transaction.source, transaction.operation, transaction.asset, transaction.trade_date.isoformat())
             if key in existing_transactions:
-                assert existing_transactions[key] == transaction.external_ref
+                assert existing_transactions[key] == transaction.transaction_uid
 
         expected_inserted_row = dict(
             zip(
@@ -131,20 +131,20 @@ def test_transactions_import_is_idempotent_with_inserted_rows() -> None:
                 inserted_row.strip().split(","),
             )
         )
-        expected_ref = compute_external_ref_from_row(expected_inserted_row)
+        expected_ref = compute_transaction_uid_from_row(expected_inserted_row)
         inserted = next(
             t
             for t in all_transactions
-            if (t.source, t.operation, t.asset, t.ts.isoformat())
+            if (t.source, t.operation, t.asset, t.trade_date.isoformat())
             not in existing_transactions
         )
-        assert inserted.external_ref == expected_ref
+        assert inserted.transaction_uid == expected_ref
     finally:
         db.close()
         engine.dispose()
 
 
-def test_transactions_import_updates_identical_rows_with_new_external_ref() -> None:
+def test_transactions_import_updates_identical_rows_with_new_transaction_uid() -> None:
     engine, SessionLocal = _create_session()
     db = SessionLocal()
     try:
@@ -171,11 +171,11 @@ def test_transactions_import_updates_identical_rows_with_new_external_ref() -> N
         importer.import_transactions_csv(csv_content)
 
         transaction = db.query(Transaction).one()
-        assert transaction.external_ref == "legacy_ref_123"
+        assert transaction.transaction_uid == "legacy_ref_123"
 
         row_for_computation = dict(zip(CSV_COLUMNS, row_values))
         row_for_computation["id"] = ""
-        expected_external_ref = compute_external_ref_from_row(row_for_computation)
+        expected_transaction_uid = compute_transaction_uid_from_row(row_for_computation)
 
         row_values_with_new_algo = list(row_values)
         row_values_with_new_algo[0] = ""
@@ -184,7 +184,7 @@ def test_transactions_import_updates_identical_rows_with_new_external_ref() -> N
 
         transactions = db.query(Transaction).all()
         assert len(transactions) == 1
-        assert transactions[0].external_ref == expected_external_ref
+        assert transactions[0].transaction_uid == expected_transaction_uid
     finally:
         db.close()
         engine.dispose()
@@ -195,9 +195,9 @@ def test_transactions_import_handles_none_string_notes() -> None:
     db = SessionLocal()
     try:
         importer = Importer(db)
-        original_ts = "2024-01-01T12:00:00+00:00"
+        original_trade_date = "2024-01-01T12:00:00+00:00"
         original_row = (
-            f"legacy_ref,BROKER_A,CTO,BUY,{original_ts},ASSET-1,AAA,,,1,100,100,0,,,None\n"
+            f"legacy_ref,BROKER_A,CTO,BUY,{original_trade_date},ASSET-1,AAA,,,1,100,100,0,,,None\n"
         )
 
         importer.import_transactions_csv(CSV_HEADER + original_row)
@@ -232,10 +232,10 @@ def test_transactions_import_handles_none_string_notes() -> None:
         assert len(transactions) == 1
 
         expected_row_for_ref = {column: exported_row[column] for column in CSV_COLUMNS}
-        expected_external_ref = compute_external_ref_from_row(expected_row_for_ref)
+        expected_transaction_uid = compute_transaction_uid_from_row(expected_row_for_ref)
 
         refreshed_transaction = transactions[0]
-        assert refreshed_transaction.external_ref == expected_external_ref
+        assert refreshed_transaction.transaction_uid == expected_transaction_uid
         assert refreshed_transaction.notes is None
     finally:
         db.close()

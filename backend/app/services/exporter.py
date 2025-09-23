@@ -100,14 +100,14 @@ def _format_datetime(value: datetime) -> str:
 
 
 def _write_transactions(db: Session, zf: zipfile.ZipFile) -> None:
-    rows = db.query(Transaction).order_by(Transaction.ts).all()
+    rows = db.query(Transaction).order_by(Transaction.trade_date).all()
     _write_csv(zf, "transactions.csv", CSV_FILES["transactions.csv"], [
         [
-            row.external_ref,
+            row.transaction_uid,
             row.source,
-            row.type_portefeuille,
+            row.portfolio_type,
             row.operation,
-            _format_datetime(row.ts),
+            _format_datetime(row.trade_date),
             row.asset,
             row.symbol or "",
             row.isin or "",

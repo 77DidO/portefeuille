@@ -46,7 +46,7 @@ export default function TransactionsPage() {
     );
   }, [transactions]);
   const typeOptions = useMemo(() => {
-    return Array.from(new Set(transactions.map((transaction) => transaction.type_portefeuille))).sort((a, b) =>
+    return Array.from(new Set(transactions.map((transaction) => transaction.portfolio_type))).sort((a, b) =>
       a.localeCompare(b)
     );
   }, [transactions]);
@@ -63,7 +63,7 @@ export default function TransactionsPage() {
   const filteredTransactions = useMemo(() => {
     return transactions.filter((transaction) => {
       const matchSource = sourceFilter ? transaction.source === sourceFilter : true;
-      const matchType = typeFilter ? transaction.type_portefeuille === typeFilter : true;
+      const matchType = typeFilter ? transaction.portfolio_type === typeFilter : true;
       const matchAsset = assetFilter ? transaction.asset === assetFilter : true;
       const matchOperation = operationFilter ? transaction.operation === operationFilter : true;
       return matchSource && matchType && matchAsset && matchOperation;
@@ -162,40 +162,43 @@ export default function TransactionsPage() {
       return;
     }
     const feeAsset = editForm.fee_asset.trim() ? editForm.fee_asset.trim() : null;
-    const fxRateInput = editForm.fx_rate.trim();
-    let fxRate: number | null = null;
-    if (fxRateInput !== "") {
-      fxRate = Number(fxRateInput.replace(",", "."));
-      if (Number.isNaN(fxRate)) {
-        setActionError("Taux de change invalide");
+    const feeQuantityInput = editForm.fee_quantity.trim();
+    let feeQuantity: number | null = null;
+    if (feeQuantityInput !== "") {
+      feeQuantity = Number(feeQuantityInput.replace(",", "."));
+      if (Number.isNaN(feeQuantity)) {
+        setActionError("Quantité de frais invalide");
         return;
       }
     }
-    if (!editForm.ts) {
+    if (!editForm.trade_date) {
       setActionError("Date invalide");
       return;
     }
-    const tsDate = new Date(editForm.ts);
-    if (Number.isNaN(tsDate.getTime())) {
+    const tradeDateValue = new Date(editForm.trade_date);
+    if (Number.isNaN(tradeDateValue.getTime())) {
       setActionError("Date invalide");
       return;
     }
 
     const payload: TransactionUpdatePayload = {
       source: editForm.source.trim(),
-      type_portefeuille: editForm.type_portefeuille.trim(),
+      portfolio_type: editForm.portfolio_type.trim(),
       operation: editForm.operation.trim(),
       asset: editForm.asset.trim(),
       symbol_or_isin: editForm.symbol_or_isin.trim() ? editForm.symbol_or_isin.trim() : null,
+      symbol: editForm.symbol.trim() ? editForm.symbol.trim() : null,
+      isin: editForm.isin.trim() ? editForm.isin.trim() : null,
+      mic: editForm.mic.trim() ? editForm.mic.trim() : null,
       quantity,
       unit_price_eur: unitPrice,
       fee_eur: fee,
       fee_asset: feeAsset,
-      fx_rate: fxRate,
+      fee_quantity: feeQuantity,
       total_eur: total,
-      ts: tsDate.toISOString(),
+      trade_date: tradeDateValue.toISOString(),
       notes: editForm.notes.trim() ? editForm.notes.trim() : null,
-      external_ref: editForm.external_ref.trim() ? editForm.external_ref.trim() : null
+      transaction_uid: editForm.transaction_uid.trim() ? editForm.transaction_uid.trim() : null
     };
 
     setSaving(true);
@@ -213,7 +216,7 @@ export default function TransactionsPage() {
 
   async function handleDelete(transaction: TransactionResponse) {
     const confirmed = window.confirm(
-      `Supprimer la transaction du ${formatDateTime(transaction.ts)} ? Cette action est irréversible.`
+      `Supprimer la transaction du ${formatDateTime(transaction.trade_date)} ? Cette action est irréversible.`
     );
     if (!confirmed) {
       return;
@@ -386,12 +389,15 @@ export default function TransactionsPage() {
                     <Th filterValue={operationFilter || "Toutes"}>Opération</Th>
                     <Th filterValue={assetFilter || "Tous"}>Actif</Th>
                     <Th>Symbole</Th>
+                    <Th>ISIN</Th>
+                    <Th>MIC</Th>
                     <Th>Quantité</Th>
                     <Th>Prix unitaire</Th>
                     <Th>Frais</Th>
                     <Th>Devise frais</Th>
-                    <Th>Taux FX</Th>
+                    <Th>Quantité frais</Th>
                     <Th>Total</Th>
+                    <Th>UID</Th>
                     <Th>Notes</Th>
                     <Th>Actions</Th>
                   </tr>
@@ -400,18 +406,27 @@ export default function TransactionsPage() {
                   {filteredTransactions.map((transaction) => (
                     <Fragment key={transaction.id}>
                       <tr className="hover:bg-slate-50">
-                        <Td>{formatDateTime(transaction.ts)}</Td>
+                        <Td>{formatDateTime(transaction.trade_date)}</Td>
                         <Td>{transaction.source}</Td>
-                        <Td className="uppercase">{transaction.type_portefeuille}</Td>
+                        <Td className="uppercase">{transaction.portfolio_type}</Td>
                         <Td>{transaction.operation}</Td>
                         <Td>{transaction.asset}</Td>
-                        <Td>{transaction.symbol_or_isin ?? "-"}</Td>
+                        <Td>{transaction.symbol ?? transaction.symbol_or_isin ?? "-"}</Td>
+                        <Td>{transaction.isin ?? "-"}</Td>
+                        <Td>{transaction.mic ?? "-"}</Td>
                         <Td>{formatNumber(transaction.quantity, 4)}</Td>
                         <Td>{formatCurrency(transaction.unit_price_eur)}</Td>
                         <Td>{formatCurrency(transaction.fee_eur)}</Td>
                         <Td>{transaction.fee_asset?.trim() || "—"}</Td>
-                        <Td>{formatNumber(transaction.fx_rate, 6)}</Td>
+                        <Td>
+                          {transaction.fee_quantity !== null && transaction.fee_quantity !== undefined
+                            ? formatNumber(transaction.fee_quantity, 6)
+                            : "—"}
+                        </Td>
                         <Td>{formatCurrency(transaction.total_eur)}</Td>
+                        <Td className="max-w-xs truncate" title={transaction.transaction_uid ?? undefined}>
+                          {transaction.transaction_uid ?? "—"}
+                        </Td>
                         <Td className="max-w-xs truncate" title={transaction.notes ?? undefined}>
                           {transaction.notes ?? "—"}
                         </Td>
@@ -438,7 +453,7 @@ export default function TransactionsPage() {
                       </tr>
                       {editingId === transaction.id && editForm ? (
                         <tr className="bg-slate-50">
-                          <td colSpan={14} className="px-4 py-4">
+                          <td colSpan={17} className="px-4 py-4">
                             <form onSubmit={handleEditSubmit} className="space-y-4">
                               <div className="grid gap-4 md:grid-cols-2">
                                 <FormField label="Source">
@@ -453,8 +468,8 @@ export default function TransactionsPage() {
                                 <FormField label="Type de portefeuille">
                                   <input
                                     className="w-full rounded border border-slate-200 px-3 py-2"
-                                    name="type_portefeuille"
-                                    value={editForm.type_portefeuille}
+                                    name="portfolio_type"
+                                    value={editForm.portfolio_type}
                                     onChange={handleEditFieldChange}
                                     required
                                   />
@@ -482,6 +497,30 @@ export default function TransactionsPage() {
                                     className="w-full rounded border border-slate-200 px-3 py-2"
                                     name="symbol_or_isin"
                                     value={editForm.symbol_or_isin}
+                                    onChange={handleEditFieldChange}
+                                  />
+                                </FormField>
+                                <FormField label="Symbole">
+                                  <input
+                                    className="w-full rounded border border-slate-200 px-3 py-2"
+                                    name="symbol"
+                                    value={editForm.symbol}
+                                    onChange={handleEditFieldChange}
+                                  />
+                                </FormField>
+                                <FormField label="ISIN">
+                                  <input
+                                    className="w-full rounded border border-slate-200 px-3 py-2"
+                                    name="isin"
+                                    value={editForm.isin}
+                                    onChange={handleEditFieldChange}
+                                  />
+                                </FormField>
+                                <FormField label="MIC">
+                                  <input
+                                    className="w-full rounded border border-slate-200 px-3 py-2"
+                                    name="mic"
+                                    value={editForm.mic}
                                     onChange={handleEditFieldChange}
                                   />
                                 </FormField>
@@ -520,13 +559,13 @@ export default function TransactionsPage() {
                                     onChange={handleEditFieldChange}
                                   />
                                 </FormField>
-                                <FormField label="Taux de change">
+                                <FormField label="Quantité des frais">
                                   <input
                                     type="number"
                                     step="any"
                                     className="w-full rounded border border-slate-200 px-3 py-2"
-                                    name="fx_rate"
-                                    value={editForm.fx_rate}
+                                    name="fee_quantity"
+                                    value={editForm.fee_quantity}
                                     onChange={handleEditFieldChange}
                                   />
                                 </FormField>
@@ -543,17 +582,17 @@ export default function TransactionsPage() {
                                   <input
                                     type="datetime-local"
                                     className="w-full rounded border border-slate-200 px-3 py-2"
-                                    name="ts"
-                                    value={editForm.ts}
+                                    name="trade_date"
+                                    value={editForm.trade_date}
                                     onChange={handleEditFieldChange}
                                     required
                                   />
                                 </FormField>
-                                <FormField label="Référence externe" className="md:col-span-2">
+                                <FormField label="UID transaction" className="md:col-span-2">
                                   <input
                                     className="w-full rounded border border-slate-200 px-3 py-2"
-                                    name="external_ref"
-                                    value={editForm.external_ref}
+                                    name="transaction_uid"
+                                    value={editForm.transaction_uid}
                                     onChange={handleEditFieldChange}
                                   />
                                 </FormField>
@@ -650,76 +689,88 @@ function FormField({
 type TransactionResponse = {
   id: number;
   source: string;
-  type_portefeuille: string;
+  portfolio_type: string;
   operation: string;
   asset: string;
   symbol_or_isin?: string | null;
+  symbol?: string | null;
+  isin?: string | null;
+  mic?: string | null;
   quantity: number;
   unit_price_eur: number;
   fee_eur: number;
   fee_asset: string | null;
-  fx_rate: number | null;
+  fee_quantity: number | null;
   total_eur: number;
-  ts: string;
+  trade_date: string;
   notes?: string | null;
-  external_ref?: string | null;
+  transaction_uid?: string | null;
 };
 
 type TransactionUpdatePayload = {
   source: string;
-  type_portefeuille: string;
+  portfolio_type: string;
   operation: string;
   asset: string;
   symbol_or_isin: string | null;
+  symbol: string | null;
+  isin: string | null;
+  mic: string | null;
   quantity: number;
   unit_price_eur: number;
   fee_eur: number;
   fee_asset: string | null;
-  fx_rate: number | null;
+  fee_quantity: number | null;
   total_eur: number;
-  ts: string;
+  trade_date: string;
   notes: string | null;
-  external_ref: string | null;
+  transaction_uid: string | null;
 };
 
 type TransactionFormState = {
   source: string;
-  type_portefeuille: string;
+  portfolio_type: string;
   operation: string;
   asset: string;
   symbol_or_isin: string;
+  symbol: string;
+  isin: string;
+  mic: string;
   quantity: string;
   unit_price_eur: string;
   fee_eur: string;
   fee_asset: string;
-  fx_rate: string;
+  fee_quantity: string;
   total_eur: string;
-  ts: string;
+  trade_date: string;
   notes: string;
-  external_ref: string;
+  transaction_uid: string;
 };
 
 function transactionToFormState(transaction: TransactionResponse): TransactionFormState {
   return {
     source: transaction.source,
-    type_portefeuille: transaction.type_portefeuille,
+    portfolio_type: transaction.portfolio_type,
     operation: transaction.operation,
     asset: transaction.asset,
     symbol_or_isin: transaction.symbol_or_isin ?? "",
+    symbol: transaction.symbol ?? "",
+    isin: transaction.isin ?? "",
+    mic: transaction.mic ?? "",
     quantity: transaction.quantity.toString(),
     unit_price_eur: transaction.unit_price_eur.toString(),
     fee_eur: transaction.fee_eur.toString(),
     fee_asset: transaction.fee_asset ?? "",
-    fx_rate: transaction.fx_rate !== null && transaction.fx_rate !== undefined ? transaction.fx_rate.toString() : "",
+    fee_quantity: transaction.fee_quantity !== null && transaction.fee_quantity !== undefined ? transaction.fee_quantity.toString() : "",
     total_eur: transaction.total_eur.toString(),
-    ts: formatDateTimeLocalInput(transaction.ts),
+    trade_date: formatDateTimeLocalInput(transaction.trade_date),
     notes: transaction.notes ?? "",
-    external_ref: transaction.external_ref ?? ""
+    transaction_uid: transaction.transaction_uid ?? ""
   };
 }
 
-function formatDateTimeLocalInput(ts: string): string {
-  const date = new Date(ts);
+function formatDateTimeLocalInput(isoString: string): string {
+  const date = new Date(isoString);
   const offsetMinutes = date.getTimezoneOffset();
   const localDate = new Date(date.getTime() - offsetMinutes * 60 * 1000);
   return localDate.toISOString().slice(0, 16);

@@ -8,7 +8,7 @@ from typing import AsyncGenerator, Dict
 import httpx
 
 from app.core.config import settings
-from app.core.security import sign_external_ref
+from app.core.security import sign_transaction_uid
 from app.db.session import SessionLocal
 from app.services.system_logs import record_log
 
