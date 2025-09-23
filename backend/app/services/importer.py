@@ -15,53 +15,80 @@ from app.utils.time import to_utc
 
 REQUIRED_COLUMNS = {
     "transactions.csv": [
+        "id",
         "source",
-        "type_portefeuille",
+        "portfolio_type",
         "operation",
+        "date",
         "asset",
-        "symbol_or_isin",
+        "symbol",
+        "isin",
+        "mic",
         "quantity",
         "unit_price_eur",
+        "total_eur",
         "fee_eur",
         "fee_asset",
-        "fx_rate",
-        "total_eur",
-        "ts",
+        "fee_quantity",
+        "notes",
     ]
 }
 
 EXTERNAL_REF_FIELDS = [
     "source",
-    "type_portefeuille",
+    "portfolio_type",
     "operation",
+    "date",
     "asset",
-    "symbol_or_isin",
+    "symbol",
+    "isin",
+    "mic",
     "quantity",
     "unit_price_eur",
+    "total_eur",
     "fee_eur",
     "fee_asset",
-    "fx_rate",
-    "total_eur",
-    "ts",
+    "fee_quantity",
+    "notes",
 ]
 
 EXTERNAL_REF_SEPARATOR = "\x1f"
 
 FUNCTIONAL_TRANSACTION_FIELDS = [
     "source",
-    "type_portefeuille",
+    "portfolio_type",
     "operation",
     "asset",
-    "symbol_or_isin",
+    "symbol",
+    "isin",
+    "mic",
     "quantity",
     "unit_price_eur",
     "fee_eur",
     "fee_asset",
-    "fx_rate",
+    "fee_quantity",
     "total_eur",
-    "ts",
+    "date",
     "notes",
 ]
+
+TRANSACTION_FIELD_MAPPING = {
+    "source": "source",
+    "portfolio_type": "type_portefeuille",
+    "operation": "operation",
+    "asset": "asset",
+    "symbol": "symbol",
+    "isin": "isin",
+    "mic": "mic",
+    "quantity": "quantity",
+    "unit_price_eur": "unit_price_eur",
+    "fee_eur": "fee_eur",
+    "fee_asset": "fee_asset",
+    "fee_quantity": "fee_quantity",
+    "total_eur": "total_eur",
+    "date": "ts",
+    "notes": "notes",
+}
 
 
 def _clean_text(value: str | None) -> str:
@@ -112,7 +139,21 @@ def _parse_timestamp(value: str | None, *, field: str = "ts") -> datetime:
     text = _clean_text(value)
     if not text:
         raise ValueError(f"Valeur manquante pour {field}")
-    return to_utc(datetime.fromisoformat(text.replace("Z", "+00:00")))
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as exc:  # pragma: no cover - converted to ImportErrorDetail
+        raise ValueError(f"Valeur de date invalide pour {field}: {value!r}") from exc
+    return to_utc(parsed)
+
+
+def _parse_optional_decimal(value: str | None) -> Decimal | None:
+    text = _clean_text(value)
+    if not text:
+        return None
+    try:
+        return Decimal(text)
+    except InvalidOperation as exc:  # pragma: no cover - converted to ImportErrorDetail
+        raise ValueError(f"Valeur décimale invalide: {value!r}") from exc
 
 
 def _decimal_to_string(value: Decimal) -> str:
@@ -123,37 +164,70 @@ def _decimal_to_string(value: Decimal) -> str:
 
 
 def _build_normalized_external_ref_fields(
-    row: Dict[str, str],
     *,
+    row_id: str | None,
+    source: str,
+    portfolio_type: str,
+    operation: str,
+    asset: str,
+    symbol: str | None,
+    isin: str | None,
+    mic: str | None,
     quantity: Decimal,
     unit_price_eur: Decimal,
+    total_eur: Decimal,
     fee_eur: Decimal,
     fee_asset: str,
-    fx_rate: Decimal,
-    total_eur: Decimal,
+    fee_quantity: Decimal | None,
     ts: datetime,
+    notes: str,
 ) -> Dict[str, str]:
-    symbol_or_isin = _normalize_optional_text(row.get("symbol_or_isin"))
-    return {
-        "source": _parse_required_text(row.get("source"), "source"),
-        "type_portefeuille": _parse_required_text(row.get("type_portefeuille"), "type_portefeuille"),
-        "operation": _parse_required_text(row.get("operation"), "operation"),
-        "asset": _parse_required_text(row.get("asset"), "asset"),
-        "symbol_or_isin": symbol_or_isin or "",
+    normalized: Dict[str, str] = {
+        "id": row_id or "",
+        "source": source,
+        "portfolio_type": portfolio_type,
+        "operation": operation,
+        "date": ts.isoformat(),
+        "asset": asset,
+        "symbol": symbol or "",
+        "isin": isin or "",
+        "mic": mic or "",
         "quantity": _decimal_to_string(quantity),
         "unit_price_eur": _decimal_to_string(unit_price_eur),
+        "total_eur": _decimal_to_string(total_eur),
         "fee_eur": _decimal_to_string(fee_eur),
         "fee_asset": fee_asset,
-        "fx_rate": _decimal_to_string(fx_rate),
-        "total_eur": _decimal_to_string(total_eur),
-        "ts": ts.isoformat(),
+        "fee_quantity": _decimal_to_string(fee_quantity) if fee_quantity is not None else "",
+        "notes": notes,
     }
+    return normalized
 
 
 def _prepare_row_for_external_ref(
     row: Dict[str, str]
-) -> Tuple[Dict[str, str], Decimal, Decimal, Decimal, Decimal, Decimal, str, datetime]:
-    fee_asset = _normalize_optional_text_to_string(row.get("fee_asset"))
+) -> Tuple[
+    Dict[str, str],
+    Decimal,
+    Decimal,
+    Decimal,
+    Decimal,
+    str,
+    Decimal | None,
+    datetime,
+    str | None,
+    str | None,
+    str | None,
+    str | None,
+    str,
+]:
+    row_id = _normalize_optional_text(row.get("id"))
+    source = _parse_required_text(row.get("source"), "source")
+    portfolio_type = _parse_required_text(row.get("portfolio_type"), "portfolio_type")
+    operation = _parse_required_text(row.get("operation"), "operation")
+    asset = _parse_required_text(row.get("asset"), "asset")
+    symbol = _normalize_optional_text(row.get("symbol"))
+    isin = _normalize_optional_text(row.get("isin"))
+    mic = _normalize_optional_text(row.get("mic"))
     quantity = _parse_decimal_field(row.get("quantity"), default=None, field="quantity")
     unit_price_eur = _parse_decimal_field(
         row.get("unit_price_eur"),
@@ -161,29 +235,52 @@ def _prepare_row_for_external_ref(
         field="unit_price_eur",
     )
     fee_eur = _parse_decimal_field(row.get("fee_eur"), default=Decimal("0"), field="fee_eur")
-    fx_rate = _parse_decimal_field(row.get("fx_rate"), default=Decimal("1"), field="fx_rate")
     total_eur = _parse_decimal_field(row.get("total_eur"), default=None, field="total_eur")
-    ts = _parse_timestamp(row.get("ts"))
+    fee_asset = _normalize_optional_text_to_string(row.get("fee_asset"))
+    fee_quantity = _parse_optional_decimal(row.get("fee_quantity"))
+    ts = _parse_timestamp(row.get("date"), field="date")
+    notes = _normalize_optional_text_to_string(row.get("notes"))
     normalized_fields = _build_normalized_external_ref_fields(
-        row,
+        row_id=row_id,
+        source=source,
+        portfolio_type=portfolio_type,
+        operation=operation,
+        asset=asset,
+        symbol=symbol,
+        isin=isin,
+        mic=mic,
         quantity=quantity,
         unit_price_eur=unit_price_eur,
+        total_eur=total_eur,
         fee_eur=fee_eur,
         fee_asset=fee_asset,
-        fx_rate=fx_rate,
-        total_eur=total_eur,
+        fee_quantity=fee_quantity,
         ts=ts,
+        notes=notes,
     )
-    return normalized_fields, quantity, unit_price_eur, fee_eur, fx_rate, total_eur, fee_asset, ts
+    return (
+        normalized_fields,
+        quantity,
+        unit_price_eur,
+        fee_eur,
+        total_eur,
+        fee_asset,
+        fee_quantity,
+        ts,
+        symbol,
+        isin,
+        mic,
+        notes,
+        row_id,
+    )
 
 
-def build_external_ref(existing_ref: str | None, normalized_fields: Mapping[str, str]) -> str:
+def build_external_ref(row_id: str | None, normalized_fields: Mapping[str, str]) -> str:
     """Return an explicit reference or generate a deterministic one for a CSV row."""
 
-    if existing_ref is not None:
-        existing_ref = existing_ref.strip()
-    if existing_ref:
-        return existing_ref
+    normalized_id = _normalize_optional_text(row_id)
+    if normalized_id:
+        return normalized_id
 
     missing = [field for field in EXTERNAL_REF_FIELDS if field not in normalized_fields]
     if missing:
@@ -199,8 +296,8 @@ def build_external_ref(existing_ref: str | None, normalized_fields: Mapping[str,
 def compute_external_ref_from_row(row: Dict[str, str]) -> str:
     """Compute the external reference for a CSV row, normalising its values if needed."""
 
-    normalized_fields, *_ = _prepare_row_for_external_ref(row)
-    return build_external_ref(row.get("external_ref"), normalized_fields)
+    normalized_fields, *_, row_id = _prepare_row_for_external_ref(row)
+    return build_external_ref(row_id, normalized_fields)
 
 
 class ImportErrorDetail(Exception):
@@ -232,7 +329,10 @@ class Importer:
         self.db = db
 
     def _find_identical_transaction(self, data: Mapping[str, object]) -> Transaction | None:
-        filters = {field: data.get(field) for field in FUNCTIONAL_TRANSACTION_FIELDS}
+        filters = {
+            TRANSACTION_FIELD_MAPPING[field]: data.get(field)
+            for field in FUNCTIONAL_TRANSACTION_FIELDS
+        }
         return self.db.query(Transaction).filter_by(**filters).one_or_none()
 
     def import_zip(self, content: bytes) -> None:
@@ -271,26 +371,52 @@ class Importer:
                     quantity,
                     unit_price_eur,
                     fee_eur,
-                    fx_rate,
                     total_eur,
                     fee_asset,
+                    fee_quantity,
                     ts,
+                    symbol,
+                    isin,
+                    mic,
+                    notes,
+                    row_id,
                 ) = _prepare_row_for_external_ref(row)
-                external_ref = build_external_ref(row.get("external_ref"), normalized_fields)
-                data = {
+                external_ref = build_external_ref(row_id, normalized_fields)
+                lookup_data = {
                     "source": normalized_fields["source"],
-                    "type_portefeuille": normalized_fields["type_portefeuille"],
+                    "portfolio_type": normalized_fields["portfolio_type"],
                     "operation": normalized_fields["operation"],
                     "asset": normalized_fields["asset"],
-                    "symbol_or_isin": normalized_fields["symbol_or_isin"] or None,
+                    "symbol": symbol,
+                    "isin": isin,
+                    "mic": mic,
                     "quantity": float(quantity),
                     "unit_price_eur": float(unit_price_eur),
                     "fee_eur": float(fee_eur),
                     "fee_asset": fee_asset or None,
-                    "fx_rate": float(fx_rate),
+                    "fee_quantity": float(fee_quantity) if fee_quantity is not None else None,
                     "total_eur": float(total_eur),
+                    "date": ts,
+                    "notes": _normalize_optional_text(notes) if notes else None,
+                }
+                data = {
+                    "source": lookup_data["source"],
+                    "type_portefeuille": normalized_fields["portfolio_type"],
+                    "operation": lookup_data["operation"],
+                    "asset": lookup_data["asset"],
+                    "symbol": symbol,
+                    "isin": isin,
+                    "mic": mic,
+                    "symbol_or_isin": symbol or isin or None,
+                    "quantity": lookup_data["quantity"],
+                    "unit_price_eur": lookup_data["unit_price_eur"],
+                    "fee_eur": lookup_data["fee_eur"],
+                    "fee_asset": lookup_data["fee_asset"],
+                    "fee_quantity": lookup_data["fee_quantity"],
+                    "fx_rate": 1.0,
+                    "total_eur": lookup_data["total_eur"],
                     "ts": ts,
-                    "notes": _normalize_optional_text(row.get("notes")),
+                    "notes": lookup_data["notes"],
                     "external_ref": external_ref,
                 }
             except Exception as exc:  # noqa: BLE001
@@ -306,7 +432,7 @@ class Importer:
                 for field, value in data.items():
                     setattr(existing, field, value)
             else:
-                identical = self._find_identical_transaction(data)
+                identical = self._find_identical_transaction(lookup_data)
                 if identical:
                     for field, value in data.items():
                         setattr(identical, field, value)

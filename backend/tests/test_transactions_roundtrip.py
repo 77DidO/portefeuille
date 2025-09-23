@@ -18,6 +18,13 @@ from app.services.exporter import export_zip
 from app.services.importer import Importer, compute_external_ref_from_row
 
 
+CSV_HEADER = (
+    "id,source,portfolio_type,operation,date,asset,symbol,isin,mic,"
+    "quantity,unit_price_eur,total_eur,fee_eur,fee_asset,fee_quantity,notes\n"
+)
+CSV_COLUMNS = CSV_HEADER.strip().split(",")
+
+
 def _create_session():
     engine = create_engine(
         "sqlite://",
@@ -34,11 +41,37 @@ def test_transactions_roundtrip_preserves_fee_fields() -> None:
     db = SessionLocal()
     try:
         importer = Importer(db)
-        csv_content = """source,type_portefeuille,operation,asset,symbol_or_isin,quantity,unit_price_eur,fee_eur,fee_asset,fx_rate,total_eur,ts,notes,external_ref\n"""
-        csv_content += """BROKER_A,CTO,BUY,ASSET-1,AAA,1.0,100.0,1.0,USD,0.95,100.0,2024-01-01T12:00:00+00:00,,tx-1\n"""
-        csv_content += """BROKER_B,CTO,SELL,ASSET-2,,2.0,50.0,0.0,, ,100.0,2024-01-02T12:00:00+00:00,Second transaction,tx-2\n"""
+        csv_content = CSV_HEADER
+        csv_content += (
+            "tx-1,BROKER_A,CTO,BUY,2024-01-01T12:00:00+00:00,ASSET-1,AAA,,,1.0,100.0,100.0,1.0,USD,,\n"
+        )
+        csv_content += (
+            "tx-2,BROKER_B,CTO,SELL,2024-01-02T12:00:00+00:00,ASSET-2,,US1234567890,XPAR,2.0,50.0,100.0,,BTC,0.0001,Second transaction\n"
+        )
 
         importer.import_transactions_csv(csv_content)
+
+        transactions = {t.external_ref: t for t in db.query(Transaction).all()}
+        assert transactions["tx-1"].fee_asset == "USD"
+        assert transactions["tx-1"].fee_quantity is None
+        assert transactions["tx-2"].fee_asset == "BTC"
+        assert transactions["tx-2"].fee_quantity == 0.0001
+        assert transactions["tx-2"].fee_eur == 0
+
+        archive = export_zip(db)
+        with zipfile.ZipFile(io.BytesIO(archive)) as zf:
+            with zf.open("transactions.csv") as transactions_file:
+                reader = csv.DictReader(io.TextIOWrapper(transactions_file, encoding="utf-8"))
+                assert reader.fieldnames == CSV_COLUMNS
+                rows = {row["id"]: row for row in reader}
+
+        assert rows["tx-1"]["fee_asset"] == "USD"
+        assert rows["tx-1"]["fee_quantity"] == ""
+        assert rows["tx-2"]["fee_asset"] == "BTC"
+        assert rows["tx-2"]["fee_quantity"] == "0.0001"
+        assert rows["tx-2"]["fee_eur"] == "0"
+        assert rows["tx-2"]["isin"] == "US1234567890"
+        assert rows["tx-2"]["mic"] == "XPAR"
 
         def override_get_db():
             session = SessionLocal()
@@ -58,20 +91,8 @@ def test_transactions_roundtrip_preserves_fee_fields() -> None:
         data_by_ref = {item["external_ref"]: item for item in payload}
 
         assert data_by_ref["tx-1"]["fee_asset"] == "USD"
-        assert data_by_ref["tx-1"]["fx_rate"] == 0.95
-        assert data_by_ref["tx-2"]["fee_asset"] is None
-        assert data_by_ref["tx-2"]["fx_rate"] == 1.0
-
-        archive = export_zip(db)
-        with zipfile.ZipFile(io.BytesIO(archive)) as zf:
-            with zf.open("transactions.csv") as transactions_file:
-                reader = csv.DictReader(io.TextIOWrapper(transactions_file, encoding="utf-8"))
-                rows = {row["external_ref"]: row for row in reader}
-
-        assert rows["tx-1"]["fee_asset"] == "USD"
-        assert rows["tx-1"]["fx_rate"] == "0.95"
-        assert rows["tx-2"]["fee_asset"] == ""
-        assert rows["tx-2"]["fx_rate"] == "1.0"
+        assert data_by_ref["tx-2"]["fee_asset"] == "BTC"
+        assert data_by_ref["tx-2"]["fee_eur"] == 0
     finally:
         db.close()
         engine.dispose()
@@ -82,23 +103,19 @@ def test_transactions_import_is_idempotent_with_inserted_rows() -> None:
     db = SessionLocal()
     try:
         importer = Importer(db)
-        header = (
-            "source,type_portefeuille,operation,asset,symbol_or_isin,quantity,unit_price_eur," +
-            "fee_eur,fee_asset,fx_rate,total_eur,ts,notes,external_ref\n"
-        )
         base_rows = [
-            "BROKER_A,CTO,BUY,ASSET-1,AAA,1,100,0,,1,100,2024-01-01T12:00:00+00:00,,\n",
-            "BROKER_C,PEA,SELL,ASSET-3,CCC,3,40,0.5,,1,119.5,2024-01-03T12:00:00+00:00,,\n",
+            ",BROKER_A,CTO,BUY,2024-01-01T12:00:00+00:00,ASSET-1,AAA,,,1,100,100,0,,,\n",
+            ",BROKER_C,PEA,SELL,2024-01-03T12:00:00+00:00,ASSET-3,CCC,,,3,40,119.5,0.5,,,\n",
         ]
 
-        importer.import_transactions_csv(header + "".join(base_rows))
+        importer.import_transactions_csv(CSV_HEADER + "".join(base_rows))
         existing_transactions = {
             (t.source, t.operation, t.asset, t.ts.isoformat()): t.external_ref
             for t in db.query(Transaction).all()
         }
 
-        inserted_row = "BROKER_B,CTO,DIVIDEND,ASSET-2,,2,10,0,,1,20,2024-01-02T12:00:00+00:00,,\n"
-        importer.import_transactions_csv(header + base_rows[0] + inserted_row + base_rows[1])
+        inserted_row = ",BROKER_B,CTO,DIVIDEND,2024-01-02T12:00:00+00:00,ASSET-2,,,,2,10,20,,,\n"
+        importer.import_transactions_csv(CSV_HEADER + base_rows[0] + inserted_row + base_rows[1])
 
         all_transactions = db.query(Transaction).all()
         assert len(all_transactions) == 3
@@ -110,7 +127,7 @@ def test_transactions_import_is_idempotent_with_inserted_rows() -> None:
 
         expected_inserted_row = dict(
             zip(
-                header.strip().split(","),
+                CSV_COLUMNS,
                 inserted_row.strip().split(","),
             )
         )
@@ -132,45 +149,37 @@ def test_transactions_import_updates_identical_rows_with_new_external_ref() -> N
     db = SessionLocal()
     try:
         importer = Importer(db)
-        header = (
-            "source,type_portefeuille,operation,asset,symbol_or_isin,quantity,unit_price_eur," +
-            "fee_eur,fee_asset,fx_rate,total_eur,ts,notes,external_ref\n"
-        )
-        old_external_ref = "legacy_ref_123"
         row_values = [
+            "legacy_ref_123",
             "BROKER_A",
             "CTO",
             "BUY",
+            "2024-01-01T12:00:00+00:00",
             "ASSET-1",
             "AAA",
+            "",
+            "",
             "1",
+            "100",
             "100",
             "0",
             "",
-            "1",
-            "100",
-            "2024-01-01T12:00:00+00:00",
             "",
-            old_external_ref,
+            "",
         ]
-        csv_content = header + ",".join(row_values) + "\n"
+        csv_content = CSV_HEADER + ",".join(row_values) + "\n"
         importer.import_transactions_csv(csv_content)
 
         transaction = db.query(Transaction).one()
-        assert transaction.external_ref == old_external_ref
+        assert transaction.external_ref == "legacy_ref_123"
 
-        row_for_computation = dict(
-            zip(
-                header.strip().split(","),
-                row_values,
-            )
-        )
-        row_for_computation["external_ref"] = ""
+        row_for_computation = dict(zip(CSV_COLUMNS, row_values))
+        row_for_computation["id"] = ""
         expected_external_ref = compute_external_ref_from_row(row_for_computation)
 
         row_values_with_new_algo = list(row_values)
-        row_values_with_new_algo[-1] = ""
-        csv_content_reimport = header + ",".join(row_values_with_new_algo) + "\n"
+        row_values_with_new_algo[0] = ""
+        csv_content_reimport = CSV_HEADER + ",".join(row_values_with_new_algo) + "\n"
         importer.import_transactions_csv(csv_content_reimport)
 
         transactions = db.query(Transaction).all()
@@ -186,16 +195,12 @@ def test_transactions_import_handles_none_string_notes() -> None:
     db = SessionLocal()
     try:
         importer = Importer(db)
-        header = (
-            "source,type_portefeuille,operation,asset,symbol_or_isin,quantity,unit_price_eur," +
-            "fee_eur,fee_asset,fx_rate,total_eur,ts,notes,external_ref\n"
-        )
         original_ts = "2024-01-01T12:00:00+00:00"
         original_row = (
-            f"BROKER_A,CTO,BUY,ASSET-1,AAA,1,100,0,,1,100,{original_ts},,legacy_ref\n"
+            f"legacy_ref,BROKER_A,CTO,BUY,{original_ts},ASSET-1,AAA,,,1,100,100,0,,,None\n"
         )
 
-        importer.import_transactions_csv(header + original_row)
+        importer.import_transactions_csv(CSV_HEADER + original_row)
 
         transaction = db.query(Transaction).one()
         assert transaction.notes is None
@@ -208,31 +213,13 @@ def test_transactions_import_handles_none_string_notes() -> None:
 
         assert len(exported_rows) == 1
         exported_row = exported_rows[0]
-        # Some spreadsheet tools serialise empty cells as "None" when round-tripping CSV files.
         exported_row["notes"] = exported_row["notes"] or "None"
-        exported_row["ts"] = original_ts
+        exported_row["id"] = ""
 
-        reimport_columns = [
-            "source",
-            "type_portefeuille",
-            "operation",
-            "asset",
-            "symbol_or_isin",
-            "quantity",
-            "unit_price_eur",
-            "fee_eur",
-            "fee_asset",
-            "fx_rate",
-            "total_eur",
-            "ts",
-            "notes",
-            "external_ref",
-        ]
-        exported_row["external_ref"] = ""
         reimport_content = io.StringIO()
         writer = csv.writer(reimport_content)
-        writer.writerow(reimport_columns)
-        writer.writerow([exported_row[column] for column in reimport_columns])
+        writer.writerow(CSV_COLUMNS)
+        writer.writerow([exported_row[column] for column in CSV_COLUMNS])
 
         reimport_buffer = io.BytesIO()
         with zipfile.ZipFile(reimport_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
@@ -244,8 +231,7 @@ def test_transactions_import_handles_none_string_notes() -> None:
         transactions = db.query(Transaction).all()
         assert len(transactions) == 1
 
-        expected_row_for_ref = {column: exported_row[column] for column in reimport_columns}
-        expected_row_for_ref["external_ref"] = ""
+        expected_row_for_ref = {column: exported_row[column] for column in CSV_COLUMNS}
         expected_external_ref = compute_external_ref_from_row(expected_row_for_ref)
 
         refreshed_transaction = transactions[0]

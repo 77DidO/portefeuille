@@ -3,7 +3,8 @@ from __future__ import annotations
 import csv
 import io
 import zipfile
-from datetime import datetime
+from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Iterable, Tuple
 
 from sqlalchemy.orm import Session
@@ -18,19 +19,20 @@ CSV_FILES = {
     "transactions.csv": [
         "id",
         "source",
-        "type_portefeuille",
+        "portfolio_type",
         "operation",
+        "date",
         "asset",
-        "symbol_or_isin",
+        "symbol",
+        "isin",
+        "mic",
         "quantity",
         "unit_price_eur",
+        "total_eur",
         "fee_eur",
         "fee_asset",
-        "fx_rate",
-        "total_eur",
-        "ts",
+        "fee_quantity",
         "notes",
-        "external_ref",
     ],
     "holdings.csv": [
         "as_of",
@@ -81,25 +83,42 @@ def export_zip(db: Session) -> bytes:
     return buffer.read()
 
 
+def _format_decimal(value: float | None) -> str:
+    if value is None:
+        return ""
+    dec = Decimal(str(value))
+    formatted = format(dec.normalize(), "f")
+    if "." in formatted:
+        formatted = formatted.rstrip("0").rstrip(".")
+    return formatted
+
+
+def _format_datetime(value: datetime) -> str:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 def _write_transactions(db: Session, zf: zipfile.ZipFile) -> None:
     rows = db.query(Transaction).order_by(Transaction.ts).all()
     _write_csv(zf, "transactions.csv", CSV_FILES["transactions.csv"], [
         [
-            row.id,
+            row.external_ref,
             row.source,
             row.type_portefeuille,
             row.operation,
+            _format_datetime(row.ts),
             row.asset,
-            row.symbol_or_isin,
-            row.quantity,
-            row.unit_price_eur,
-            row.fee_eur,
-            row.fee_asset,
-            row.fx_rate,
-            row.total_eur,
-            row.ts.isoformat(),
-            row.notes,
-            row.external_ref,
+            row.symbol or "",
+            row.isin or "",
+            row.mic or "",
+            _format_decimal(row.quantity),
+            _format_decimal(row.unit_price_eur),
+            _format_decimal(row.total_eur),
+            _format_decimal(row.fee_eur),
+            row.fee_asset or "",
+            _format_decimal(row.fee_quantity),
+            row.notes or "",
         ]
         for row in rows
     ])
