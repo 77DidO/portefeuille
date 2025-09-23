@@ -55,14 +55,14 @@ def upgrade() -> None:
             batch.drop_column("fx_rate")
 
     constraints = {c["name"] for c in inspector.get_unique_constraints("transactions")}
-    if "uq_transactions_external_ref" in constraints:
-        op.drop_constraint("uq_transactions_external_ref", "transactions", type_="unique")
-    if "uq_transactions_transaction_uid" not in constraints:
-        op.create_unique_constraint(
-            "uq_transactions_transaction_uid",
-            "transactions",
-            ["transaction_uid"],
-        )
+    with op.batch_alter_table("transactions") as batch:
+        if "uq_transactions_external_ref" in constraints:
+            batch.drop_constraint("uq_transactions_external_ref", type_="unique")
+        if "uq_transactions_transaction_uid" not in constraints:
+            batch.create_unique_constraint(
+                "uq_transactions_transaction_uid",
+                ["transaction_uid"],
+            )
 
 
 def downgrade() -> None:
@@ -88,10 +88,8 @@ def downgrade() -> None:
             new_column_name="type_portefeuille",
             existing_type=sa.String(length=16),
         )
-
-    op.drop_constraint("uq_transactions_transaction_uid", "transactions", type_="unique")
-    op.create_unique_constraint(
-        "uq_transactions_external_ref",
-        "transactions",
-        ["external_ref"],
-    )
+        batch.drop_constraint("uq_transactions_transaction_uid", type_="unique")
+        batch.create_unique_constraint(
+            "uq_transactions_external_ref",
+            ["external_ref"],
+        )

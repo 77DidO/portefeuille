@@ -102,14 +102,14 @@ def upgrade() -> None:
     transactions = _transactions_table(column_names)
 
     unique_constraints = {c["name"] for c in inspector.get_unique_constraints("transactions")}
-    if "uq_transactions_external_ref" in unique_constraints:
-        op.drop_constraint("uq_transactions_external_ref", "transactions", type_="unique")
-    if "transaction_uid" in column_names and "uq_transactions_transaction_uid" not in unique_constraints:
-        op.create_unique_constraint(
-            "uq_transactions_transaction_uid",
-            "transactions",
-            ["transaction_uid"],
-        )
+    with op.batch_alter_table("transactions") as batch:
+        if "uq_transactions_external_ref" in unique_constraints:
+            batch.drop_constraint("uq_transactions_external_ref", type_="unique")
+        if "transaction_uid" in column_names and "uq_transactions_transaction_uid" not in unique_constraints:
+            batch.create_unique_constraint(
+                "uq_transactions_transaction_uid",
+                ["transaction_uid"],
+            )
 
     if "transaction_uid" in column_names and "external_ref" in column_names:
         bind.execute(
