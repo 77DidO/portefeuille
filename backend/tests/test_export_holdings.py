@@ -50,6 +50,9 @@ def test_export_holdings_uses_persisted_portfolio_type(monkeypatch):
             identifier="CRYPTO::SOL",
             asset="SOL",
             symbol_or_isin="SOL",
+            symbol="SOL",
+            isin=None,
+            mic=None,
             quantity=2.0,
             pru_eur=10.0,
             invested_eur=20.0,
@@ -68,7 +71,8 @@ def test_export_holdings_uses_persisted_portfolio_type(monkeypatch):
         snapshots.run_snapshot(db)
 
         stored_holding = db.query(Holding).filter_by(asset="SOL").one()
-        assert stored_holding.type_portefeuille == "CRYPTO"
+        assert stored_holding.portfolio_type == "CRYPTO"
+        assert stored_holding.symbol == "SOL"
 
         archive = export_zip(db)
         with zipfile.ZipFile(io.BytesIO(archive)) as zf:
@@ -77,7 +81,9 @@ def test_export_holdings_uses_persisted_portfolio_type(monkeypatch):
                 rows = list(reader)
 
         assert any(
-            row["asset"] == "SOL" and row["type_portefeuille"] == "CRYPTO"
+            row["asset"] == "SOL"
+            and row["portfolio_type"] == "CRYPTO"
+            and row["symbol"] == "SOL"
             for row in rows
         )
     finally:

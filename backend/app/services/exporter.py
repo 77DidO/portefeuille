@@ -36,8 +36,11 @@ CSV_FILES = {
     ],
     "holdings.csv": [
         "as_of",
-        "type_portefeuille",
+        "portfolio_type",
         "asset",
+        "symbol",
+        "isin",
+        "mic",
         "symbol_or_isin",
         "quantity",
         "pru_eur",
@@ -129,8 +132,11 @@ def _write_holdings(db: Session, zf: zipfile.ZipFile) -> None:
     _write_csv(zf, "holdings.csv", CSV_FILES["holdings.csv"], [
         [
             row.as_of.isoformat(),
-            row.type_portefeuille,
+            row.portfolio_type,
             row.asset,
+            row.symbol or "",
+            row.isin or "",
+            row.mic or "",
             row.symbol_or_isin,
             row.quantity,
             row.pru_eur,

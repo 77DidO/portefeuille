@@ -46,6 +46,9 @@ def run_snapshot(db: Session) -> Snapshot:
             Holding(
                 asset=holding.asset,
                 symbol_or_isin=holding.symbol_or_isin,
+                symbol=holding.symbol,
+                isin=holding.isin,
+                mic=holding.mic,
                 quantity=holding.quantity,
                 pru_eur=holding.pru_eur,
                 invested_eur=holding.invested_eur,
@@ -54,7 +57,7 @@ def run_snapshot(db: Session) -> Snapshot:
                 pl_eur=holding.pl_eur,
                 pl_pct=holding.pl_pct,
                 as_of=holding.as_of,
-                type_portefeuille=holding.type_portefeuille,
+                portfolio_type=holding.type_portefeuille,
                 account_id=holding.account_id,
             )
         )
