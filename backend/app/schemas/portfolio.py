@@ -10,6 +10,9 @@ class HoldingBase(BaseModel):
     identifier: str
     asset: str
     symbol_or_isin: Optional[str] = None
+    symbol: Optional[str] = None
+    isin: Optional[str] = None
+    mic: Optional[str] = None
     quantity: float
     pru_eur: float
     invested_eur: float

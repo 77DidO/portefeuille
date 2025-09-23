@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-import asyncio
-import logging
-from dataclasses import dataclass, field
-from datetime import datetime
 import json
 import re
-from typing import Dict, List, Tuple
+from collections import defaultdict
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Dict, List, NamedTuple, Tuple
+
+import asyncio
+import logging
 
 import httpx
 
@@ -42,6 +44,11 @@ class HoldingView:
     type_portefeuille: str
     as_of: datetime
     account_id: str | None = None
+    symbol: str | None = None
+    isin: str | None = None
+    mic: str | None = None
+    mic_variants: Tuple[str, ...] = field(default_factory=tuple)
+    portfolio_key: "PortfolioKey" | None = None
 
 
 @dataclass
@@ -130,7 +137,12 @@ def _contains_fiat_code(text: str) -> bool:
     return any(token in FIAT_CURRENCIES for token in tokens)
 
 
-PortfolioKey = Tuple[str, str, str]
+class PortfolioKey(NamedTuple):
+    portfolio_type: str
+    account_id: str
+    symbol: str
+    isin: str
+    mic: str
 
 
 def _record_portfolio_log(level: str, message: str, meta: Dict[str, object] | None = None) -> None:
@@ -157,6 +169,19 @@ def _normalize_symbol(value: str | None) -> str:
     return (value or "").strip().upper()
 
 
+def _normalize_isin(value: str | None) -> str:
+    return (value or "").strip().upper()
+
+
+def _normalize_mic_value(value: str | None) -> str:
+    if not value:
+        return ""
+    normalized = _normalize_mic(value)
+    if normalized:
+        return normalized
+    return (value or "").strip().upper()
+
+
 def _normalize_account_id(value: str | None) -> str:
     return (value or "").strip().upper()
 
@@ -164,43 +189,146 @@ def _normalize_account_id(value: str | None) -> str:
 def _make_portfolio_key(
     type_portefeuille: str | None,
     symbol: str | None,
+    isin: str | None,
+    mic: str | None,
     account_id: str | None,
 ) -> PortfolioKey:
-    return (
-        _normalize_portfolio_type(type_portefeuille),
-        _normalize_symbol(symbol),
-        _normalize_account_id(account_id),
+    return PortfolioKey(
+        portfolio_type=_normalize_portfolio_type(type_portefeuille),
+        account_id=_normalize_account_id(account_id),
+        symbol=_normalize_symbol(symbol),
+        isin=_normalize_isin(isin),
+        mic=_normalize_mic_value(mic),
     )
 
 
+def _build_quote_symbol(symbol: str, isin: str, mic: str) -> str | None:
+    if symbol and isin and mic:
+        return _normalize_issue(symbol, isin, mic)
+    if symbol and isin:
+        return f"{symbol}-{isin}"
+    if isin and mic:
+        return f"{isin}-{mic}"
+    if symbol and mic:
+        return f"{symbol}-{mic}"
+    if isin:
+        return isin
+    if symbol:
+        return symbol
+    if mic:
+        return mic
+    return None
+
+
 def _build_identifier_from_key(key: PortfolioKey) -> str:
-    type_portefeuille, symbol, account_id = key
-    parts = [type_portefeuille]
-    if account_id:
-        parts.append(account_id)
-    parts.append(symbol)
-    return "::".join(parts)
+    def encode(value: str | None) -> str:
+        if value:
+            return value
+        return "_"
+
+    return "::".join(
+        [
+            encode(key.portfolio_type),
+            encode(key.account_id),
+            encode(key.symbol),
+            encode(key.isin),
+            encode(key.mic),
+        ]
+    )
 
 
-def _parse_identifier(identifier: str) -> Tuple[str, str | None, str | None]:
+def _resolve_transaction_components(
+    tx: Transaction,
+) -> Tuple[str, str, str, set[str]]:
+    symbol = _normalize_symbol(tx.symbol)
+    isin = _normalize_isin(tx.isin)
+    mic = _normalize_mic_value(tx.mic)
+    mic_candidates: set[str] = set()
+    if mic:
+        mic_candidates.add(mic)
+    raw_mic = (tx.mic or "").strip().upper()
+    if raw_mic:
+        mic_candidates.add(raw_mic)
+
+    fallback = (tx.symbol_or_isin or tx.asset or "").strip()
+    fallback_upper = fallback.upper()
+    if fallback_upper:
+        if not symbol and not _ISIN_REGEX.match(fallback_upper):
+            symbol = fallback_upper
+        if not isin and _ISIN_REGEX.match(fallback_upper):
+            isin = fallback_upper
+
+        issue_match = _EURONEXT_ISSUE_PATTERN.match(fallback_upper)
+        if issue_match:
+            symbol = symbol or issue_match.group("symbol")
+            isin = isin or issue_match.group("isin")
+            mic_candidate = _normalize_mic_value(issue_match.group("mic"))
+            if mic_candidate:
+                mic = mic or mic_candidate
+                mic_candidates.add(mic_candidate)
+        else:
+            combined_match = _EURONEXT_COMBINED_PATTERN.match(fallback_upper)
+            if combined_match:
+                symbol = symbol or combined_match.group("symbol")
+                isin = isin or combined_match.group("isin")
+                mic_value = combined_match.group("mic")
+                if mic_value:
+                    mic_candidate = _normalize_mic_value(mic_value)
+                    if mic_candidate:
+                        mic = mic or mic_candidate
+                        mic_candidates.add(mic_candidate)
+            symbol_mic = _extract_symbol_mic(fallback_upper)
+            if symbol_mic:
+                symbol = symbol or symbol_mic[0]
+                mic_candidate = _normalize_mic_value(symbol_mic[1])
+                if mic_candidate:
+                    mic = mic or mic_candidate
+                    mic_candidates.add(mic_candidate)
+
+    return symbol, isin, mic, mic_candidates
+
+
+def _parse_identifier(
+    identifier: str,
+) -> Tuple[str | None, str | None, str | None, str | None, str | None]:
     if not identifier:
-        return "", None, None
+        return None, None, None, None, None
 
-    raw_parts = identifier.split("::")
-    parts = [part.strip() for part in raw_parts]
+    parts = [part.strip() for part in identifier.split("::")]
 
-    if len(parts) >= 3:
-        type_portefeuille = parts[0].upper()
-        account_id = parts[1].upper() or None
-        symbol = "::".join(parts[2:]).upper()
-        return symbol, type_portefeuille, account_id
+    def decode(value: str) -> str | None:
+        upper = value.strip().upper()
+        if not upper or upper == "_":
+            return None
+        return upper
+
+    if len(parts) >= 5:
+        type_portefeuille = decode(parts[0])
+        account_id = decode(parts[1])
+        symbol = decode(parts[2])
+        isin = decode(parts[3])
+        mic = decode(parts[4])
+        return symbol, isin, mic, type_portefeuille, account_id
+
+    if len(parts) == 4:
+        type_portefeuille = decode(parts[0])
+        account_id = decode(parts[1])
+        symbol = decode(parts[2])
+        isin = decode(parts[3])
+        return symbol, isin, None, type_portefeuille, account_id
+
+    if len(parts) == 3:
+        type_portefeuille = decode(parts[0])
+        account_id = decode(parts[1])
+        symbol = decode(parts[2])
+        return symbol, None, None, type_portefeuille, account_id
 
     if len(parts) == 2:
-        type_portefeuille = parts[0].upper()
-        symbol = parts[1].upper()
-        return symbol, type_portefeuille, None
+        type_portefeuille = decode(parts[0])
+        symbol = decode(parts[1])
+        return symbol, None, None, type_portefeuille, None
 
-    return parts[0].upper(), None, None
+    return decode(parts[0]), None, None, None, None
 
 
 def _fetch_equity_price(symbol: str) -> float:
@@ -393,7 +521,7 @@ def _normalize_mic(value: str | None) -> str | None:
     if not value:
         return None
     upper = value.strip().upper()
-    if upper in _EURONEXT_MICS:
+    if upper in _EURONEXT_MICS or (len(upper) == 4 and upper.startswith("X")):
         return upper
     return _EURONEXT_SUFFIX_TO_MIC.get(upper)
 
@@ -703,19 +831,48 @@ def compute_holdings(db: Session) -> Tuple[List[HoldingView], Dict[str, float]]:
     txs: List[Transaction] = db.query(Transaction).order_by(Transaction.trade_date.asc(), Transaction.id.asc()).all()
     fifo = FIFOPortfolio()
     portfolio_types: Dict[PortfolioKey, str] = {}
-    symbol_labels: Dict[PortfolioKey, str] = {}
+    quote_symbols: Dict[PortfolioKey, str] = {}
+    asset_labels: Dict[PortfolioKey, str] = {}
     account_labels: Dict[PortfolioKey, str | None] = {}
+    symbol_values: Dict[PortfolioKey, str | None] = {}
+    isin_values: Dict[PortfolioKey, str | None] = {}
+    mic_values: Dict[PortfolioKey, str | None] = {}
+    mic_variants: Dict[PortfolioKey, set[str]] = defaultdict(set)
     realized_total = 0.0
 
     for tx in txs:
-        raw_symbol = (tx.symbol_or_isin or tx.asset or "").strip()
-        symbol = _normalize_symbol(raw_symbol or tx.asset)
-        portfolio_type = _normalize_portfolio_type(tx.portfolio_type)
-        key = _make_portfolio_key(tx.portfolio_type, raw_symbol or tx.asset, tx.account_id)
+        normalized_symbol, normalized_isin, normalized_mic, mic_candidates = (
+            _resolve_transaction_components(tx)
+        )
+        key = _make_portfolio_key(
+            tx.portfolio_type,
+            normalized_symbol or None,
+            normalized_isin or None,
+            normalized_mic or None,
+            tx.account_id,
+        )
         total_eur = tx.total_eur
-        portfolio_types[key] = portfolio_type
-        if key not in symbol_labels or not symbol_labels[key]:
-            symbol_labels[key] = symbol
+        portfolio_types[key] = key.portfolio_type
+        instrument_label = _build_quote_symbol(key.symbol, key.isin, key.mic)
+        if instrument_label:
+            quote_symbols[key] = instrument_label
+        asset_label = (tx.asset or "").strip()
+        if key not in asset_labels or not asset_labels[key]:
+            asset_labels[key] = asset_label or instrument_label or key.symbol or key.isin or key.mic
+        if normalized_symbol:
+            symbol_values[key] = normalized_symbol
+        elif key not in symbol_values:
+            symbol_values[key] = None
+        if normalized_isin:
+            isin_values[key] = normalized_isin
+        elif key not in isin_values:
+            isin_values[key] = None
+        if normalized_mic:
+            mic_values[key] = normalized_mic
+        elif key not in mic_values:
+            mic_values[key] = None
+        if mic_candidates:
+            mic_variants[key].update(value for value in mic_candidates if value)
         current_account = account_labels.get(key)
         if current_account is None and tx.account_id is not None:
             account_labels[key] = tx.account_id
@@ -728,7 +885,7 @@ def compute_holdings(db: Session) -> Tuple[List[HoldingView], Dict[str, float]]:
             fifo.buy(key, tx.quantity, total_eur + tx.fee_eur)
         elif operation == "SELL":
             asset_label = (tx.asset or "").strip()
-            symbol_label = (tx.symbol_or_isin or "").strip()
+            symbol_label = (tx.symbol or tx.isin or "").strip()
 
             if _contains_fiat_code(asset_label) or _contains_fiat_code(symbol_label):
                 realized_total += total_eur - tx.fee_eur
@@ -748,22 +905,26 @@ def compute_holdings(db: Session) -> Tuple[List[HoldingView], Dict[str, float]]:
         qty, cost = fifo.current_position(key)
         if qty <= 1e-12:
             continue
-        try:
-            market_price = get_market_price(symbol_labels.get(key, key[1]), portfolio_types.get(key))
-        except MarketPriceUnavailable:
+        issue_symbol = quote_symbols.get(key) or key.symbol or key.isin or key.mic
+        if issue_symbol:
+            try:
+                market_price = get_market_price(issue_symbol, portfolio_types.get(key))
+            except MarketPriceUnavailable:
+                market_price = cost / qty if qty else 0.0
+        else:
             market_price = cost / qty if qty else 0.0
         market_value = market_price * qty
         invested = cost
         pl_latent = market_value - invested
         pl_pct = (pl_latent / invested * 100.0) if invested else 0.0
         type_portefeuille = portfolio_types.get(key, "PEA")
-        symbol_display = symbol_labels.get(key, key[1])
+        symbol_display = asset_labels.get(key) or issue_symbol or key.symbol or key.isin or key.mic
         identifier = _build_identifier_from_key(key)
         holdings.append(
             HoldingView(
                 identifier=identifier,
                 asset=symbol_display,
-                symbol_or_isin=symbol_display,
+                symbol_or_isin=issue_symbol or symbol_display,
                 quantity=qty,
                 pru_eur=invested / qty,
                 invested_eur=invested,
@@ -774,6 +935,11 @@ def compute_holdings(db: Session) -> Tuple[List[HoldingView], Dict[str, float]]:
                 type_portefeuille=type_portefeuille,
                 as_of=as_of,
                 account_id=account_labels.get(key),
+                symbol=symbol_values.get(key),
+                isin=isin_values.get(key),
+                mic=mic_values.get(key),
+                mic_variants=tuple(sorted(filter(None, mic_variants.get(key, set())))),
+                portfolio_key=key,
             )
         )
 
@@ -792,7 +958,7 @@ def compute_holding_detail(db: Session, identifier: str) -> HoldingDetailView:
         raise HoldingNotFound("Missing holding identifier")
 
     normalized = identifier.strip().upper()
-    symbol_hint, type_hint, account_hint = _parse_identifier(identifier)
+    symbol_hint, isin_hint, mic_hint, type_hint, account_hint = _parse_identifier(identifier)
     holdings, _ = compute_holdings(db)
     holding: HoldingView | None = None
 
@@ -803,10 +969,25 @@ def compute_holding_detail(db: Session, identifier: str) -> HoldingDetailView:
 
     if holding is None:
         for candidate in holdings:
-            candidate_symbol = _normalize_symbol(candidate.symbol_or_isin or candidate.asset)
+            candidate_symbol = _normalize_symbol(candidate.symbol)
+            candidate_issue = _normalize_symbol(candidate.symbol_or_isin)
+            candidate_asset = _normalize_symbol(candidate.asset)
+            candidate_isin = _normalize_isin(candidate.isin)
+            candidate_mic = _normalize_mic_value(candidate.mic)
+            candidate_mic_variants = {
+                _normalize_mic_value(value) for value in candidate.mic_variants if value
+            }
             candidate_type = _normalize_portfolio_type(candidate.type_portefeuille)
             candidate_account = _normalize_account_id(candidate.account_id)
-            if symbol_hint and candidate_symbol != symbol_hint:
+            if symbol_hint and symbol_hint not in {
+                candidate_symbol,
+                candidate_issue,
+                candidate_asset,
+            }:
+                continue
+            if isin_hint and candidate_isin != isin_hint:
+                continue
+            if mic_hint and mic_hint not in ({candidate_mic} | candidate_mic_variants):
                 continue
             if type_hint and candidate_type != type_hint:
                 continue
@@ -817,34 +998,76 @@ def compute_holding_detail(db: Session, identifier: str) -> HoldingDetailView:
 
     if holding is None:
         for candidate in holdings:
-            if (candidate.symbol_or_isin or "").upper() == normalized or candidate.asset.upper() == normalized:
+            issue_normalized = (candidate.symbol_or_isin or "").upper()
+            if issue_normalized == normalized or candidate.asset.upper() == normalized:
                 holding = candidate
                 break
 
     if holding is None:
         raise HoldingNotFound(f"Holding '{identifier}' not found")
 
-    symbol_normalized = _normalize_symbol(holding.symbol_or_isin or holding.asset)
-    type_normalized = _normalize_portfolio_type(holding.type_portefeuille)
-    account_normalized = _normalize_account_id(holding.account_id)
-
-    tx_query = (
-        db.query(Transaction)
-        .filter(
-            or_(
-                func.upper(Transaction.symbol_or_isin) == symbol_normalized,
-                func.upper(Transaction.asset) == symbol_normalized,
-            )
-        )
-        .filter(func.upper(Transaction.portfolio_type) == type_normalized)
+    key = holding.portfolio_key or _make_portfolio_key(
+        holding.type_portefeuille,
+        holding.symbol,
+        holding.isin,
+        holding.mic,
+        holding.account_id,
     )
-    if account_normalized:
-        tx_query = tx_query.filter(func.upper(Transaction.account_id) == account_normalized)
+
+    tx_query = db.query(Transaction).filter(
+        func.upper(Transaction.portfolio_type) == key.portfolio_type
+    )
+    if key.account_id:
+        tx_query = tx_query.filter(func.upper(Transaction.account_id) == key.account_id)
+
+    instrument_candidates: set[str] = set()
+    if key.symbol:
+        instrument_candidates.add(key.symbol)
+    if key.isin:
+        instrument_candidates.add(key.isin)
+    holding_issue = _normalize_symbol(holding.symbol_or_isin)
+    if holding_issue:
+        instrument_candidates.add(holding_issue)
+    asset_candidate = _normalize_symbol(holding.asset)
+    if asset_candidate:
+        instrument_candidates.add(asset_candidate)
+
+    instrument_filters = []
+    for candidate in instrument_candidates:
+        instrument_filters.append(func.upper(Transaction.symbol) == candidate)
+        instrument_filters.append(func.upper(Transaction.symbol_or_isin) == candidate)
+        instrument_filters.append(func.upper(Transaction.asset) == candidate)
+        if _ISIN_REGEX.match(candidate):
+            instrument_filters.append(func.upper(Transaction.isin) == candidate)
+
+    if instrument_filters:
+        if len(instrument_filters) == 1:
+            tx_query = tx_query.filter(instrument_filters[0])
+        else:
+            tx_query = tx_query.filter(or_(*instrument_filters))
+
+    mic_candidates: set[str] = set()
+    if key.mic:
+        mic_candidates.add(key.mic)
+    if holding.mic:
+        mic_candidates.add(_normalize_mic_value(holding.mic))
+    mic_candidates.update(_normalize_mic_value(value) for value in holding.mic_variants if value)
+    mic_candidates = {value for value in mic_candidates if value}
+    if mic_candidates:
+        mic_filters = [func.upper(Transaction.mic) == hint for hint in mic_candidates]
+        if len(mic_filters) == 1:
+            tx_query = tx_query.filter(mic_filters[0])
+        elif mic_filters:
+            tx_query = tx_query.filter(or_(*mic_filters))
     tx_rows = tx_query.order_by(Transaction.trade_date.asc(), Transaction.id.asc()).all()
 
     fifo = FIFOPortfolio()
     fifo_key = _make_portfolio_key(
-        holding.type_portefeuille, holding.symbol_or_isin or holding.asset, holding.account_id
+        holding.type_portefeuille,
+        holding.symbol,
+        holding.isin,
+        holding.mic,
+        holding.account_id,
     )
     history: List[HoldingHistoryPointView] = []
     last_price = None
@@ -903,6 +1126,11 @@ def compute_holding_detail(db: Session, identifier: str) -> HoldingDetailView:
         type_portefeuille=holding.type_portefeuille,
         as_of=holding.as_of,
         account_id=holding.account_id,
+        symbol=holding.symbol,
+        isin=holding.isin,
+        mic=holding.mic,
+        mic_variants=holding.mic_variants,
+        portfolio_key=holding.portfolio_key,
         history=history,
         realized_pnl_eur=realized,
         dividends_eur=dividends,
