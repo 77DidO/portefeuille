@@ -28,8 +28,10 @@ services:
     container_name: portfolio-frontend
     depends_on:
       - backend
-    environment:
-      - NEXT_PUBLIC_API_BASE=http://localhost:8000
+    # L'UI détecte automatiquement le backend local.
+    # Décommentez ci-dessous pour cibler explicitement une autre URL :
+    # environment:
+    #   NEXT_PUBLIC_API_BASE: "https://votre-backend"
     ports:
       - "3000:3000"
 
