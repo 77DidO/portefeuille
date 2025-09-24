@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Iterable
 
 from alembic import command
 from alembic.config import Config
@@ -9,10 +10,33 @@ from sqlalchemy import create_engine, inspect
 from app.core.config import settings
 
 
+def _candidate_roots(start: Path) -> Iterable[Path]:
+    """Yield potential project roots to look for Alembic configuration files."""
+
+    current = start.resolve()
+    for candidate in (current, *current.parents):
+        yield candidate
+
+
+def _find_project_root() -> Path:
+    """Locate the directory containing the Alembic configuration.
+
+    The backend can run both from the monorepo (where Alembic lives at the
+    repository root) and from the Docker image (where it is copied next to the
+    backend sources). Walking the parents allows us to support both layouts.
+    """
+
+    for candidate in _candidate_roots(Path(__file__).parent):
+        if (candidate / "alembic.ini").exists():
+            return candidate
+
+    raise RuntimeError("Unable to locate alembic.ini. Ensure it is bundled with the backend.")
+
+
 def run_migrations() -> None:
     """Apply the latest Alembic migrations to the configured database."""
 
-    project_root = Path(__file__).resolve().parents[3]
+    project_root = _find_project_root()
     config = Config(str(project_root / "alembic.ini"))
     config.set_main_option("script_location", str(project_root / "alembic"))
     config.set_main_option("sqlalchemy.url", settings.database_url)

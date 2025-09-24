@@ -10,7 +10,6 @@ from app.services.portfolio import compute_holdings, _normalize_portfolio_type
 from app.services.system_logs import record_log
 from app.utils.time import utc_now
 
-
 SNAPSHOT_PORTFOLIO_TYPE_ALIASES: dict[str, set[str]] = {
     "PEA": {
         "PEA-PME",
@@ -77,9 +76,11 @@ def run_snapshot(db: Session) -> Snapshot:
     db.commit()
     db.refresh(snapshot)
 
+
     for holding in normalized_holdings:
         db.add(
             Holding(
+                snapshot_id=snapshot.id,
                 asset=holding.asset,
                 symbol_or_isin=holding.symbol_or_isin,
                 symbol=holding.symbol,

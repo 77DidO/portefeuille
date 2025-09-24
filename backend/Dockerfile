@@ -14,6 +14,8 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # App
 COPY backend/ /app/
+COPY alembic.ini /app/alembic.ini
+COPY alembic/ /app/alembic/
 
 # Expose FastAPI on 8000
 EXPOSE 8000

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import Column, DateTime, Float, Integer, UniqueConstraint
+from sqlalchemy.orm import relationship
 
 from .base import Base
 
@@ -16,3 +17,4 @@ class Snapshot(Base):
     value_crypto_eur = Column(Float, nullable=False)
     value_total_eur = Column(Float, nullable=False)
     pnl_total_eur = Column(Float, nullable=False)
+    holdings = relationship("Holding", back_populates="snapshot", cascade="all, delete-orphan")

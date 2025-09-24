@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from app.models.base import Base
+from app.models.holdings import Holding
 from app.models import holdings as holdings_model  # noqa: F401  # ensure table registration
 from app.models import snapshots as snapshots_model  # noqa: F401
 from app.models import transactions as transactions_model  # noqa: F401
@@ -219,6 +220,7 @@ def test_run_snapshot_normalizes_portfolio_variants(
 
     holdings = in_memory_db.query(holdings_model.Holding).all()
     assert {holding.portfolio_type for holding in holdings} == {"PEA", "CRYPTO"}
+
 
     completed_log = capture_logs[-1]
     assert completed_log[3]["snapshot"]["value_pea_eur"] == snapshot.value_pea_eur
