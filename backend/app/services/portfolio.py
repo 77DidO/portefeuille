@@ -132,6 +132,27 @@ FIAT_CURRENCIES = {
     "ZAR",
 }
 
+_BINANCE_QUOTE_SUFFIXES = tuple(
+    sorted(
+        {
+            *FIAT_CURRENCIES,
+            "USDT",
+            "BUSD",
+            "USDC",
+            "BTC",
+            "ETH",
+            "BNB",
+            "TUSD",
+            "FDUSD",
+            "DAI",
+            "BIDR",
+        },
+        key=len,
+        reverse=True,
+    )
+)
+_CRYPTO_EXCHANGE_TOKENS = {"BINANCE"}
+
 
 def _contains_fiat_code(text: str) -> bool:
     if not text:
@@ -372,7 +393,7 @@ def _fetch_equity_price(symbol: str) -> float:
 
 
 def _fetch_crypto_price(symbol: str) -> float:
-    pair = f"{symbol.upper()}EUR" if not symbol.upper().endswith("EUR") else symbol.upper()
+    pair = _normalize_crypto_fetch_symbol(symbol)
 
     try:
         return asyncio.run(binance.fetch_price(pair))
@@ -384,6 +405,39 @@ def _fetch_crypto_price(symbol: str) -> float:
             loop.close()
     except Exception as exc:  # pragma: no cover - exercised via mocks
         raise MarketPriceUnavailable(f"Binance price fetch failed for {symbol}") from exc
+
+
+def _normalize_crypto_fetch_symbol(symbol: str) -> str:
+    normalized = (symbol or "").strip().upper()
+    if not normalized:
+        return ""
+
+    tokens = [
+        token
+        for token in re.split(r"[-_/:@]", normalized)
+        if token and token not in _CRYPTO_EXCHANGE_TOKENS
+    ]
+    if tokens:
+        candidate = "".join(tokens)
+    else:
+        candidate = normalized
+
+    sanitized = re.sub(r"[^A-Z0-9]", "", candidate).replace("BINANCE", "")
+    if not sanitized:
+        fallback = re.sub(r"[^A-Z0-9]", "", normalized.replace("BINANCE", ""))
+        sanitized = fallback
+
+    if not sanitized:
+        raise MarketPriceUnavailable(f"Binance price fetch failed for {symbol}")
+
+    for quote in _BINANCE_QUOTE_SUFFIXES:
+        if len(sanitized) > len(quote) and sanitized.endswith(quote):
+            return sanitized
+
+    if sanitized.endswith("EUR"):
+        return sanitized
+
+    return f"{sanitized}EUR"
 
 
 def _load_quote_aliases() -> Dict[str, str]:

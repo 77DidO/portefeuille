@@ -56,6 +56,17 @@ def _clear_portfolio_caches():
     portfolio.compute_holdings.cache_clear()
 
 
+def _mock_binance(monkeypatch, return_value: float = 1.23):
+    calls: list[str] = []
+
+    async def fake_fetch(symbol: str) -> float:
+        calls.append(symbol)
+        return return_value
+
+    monkeypatch.setattr(portfolio.binance, "fetch_price", fake_fetch)
+    return calls
+
+
 def test_get_market_price_uses_euronext_lookup(monkeypatch):
     _clear_portfolio_caches()
     portfolio.clear_quote_alias_cache()
@@ -132,6 +143,33 @@ def test_get_market_price_uses_euronext_lookup(monkeypatch):
         db.close()
         engine.dispose()
         portfolio.clear_quote_alias_cache()
+
+
+def test_fetch_crypto_price_strips_exchange_suffix(monkeypatch):
+    calls = _mock_binance(monkeypatch, return_value=42.0)
+
+    price = portfolio._fetch_crypto_price("sol-binance")
+
+    assert price == pytest.approx(42.0)
+    assert calls == ["SOLEUR"]
+
+
+def test_fetch_crypto_price_preserves_existing_quote(monkeypatch):
+    calls = _mock_binance(monkeypatch, return_value=12.5)
+
+    price = portfolio._fetch_crypto_price("BTCUSDT")
+
+    assert price == pytest.approx(12.5)
+    assert calls == ["BTCUSDT"]
+
+
+def test_fetch_crypto_price_normalizes_symbols(monkeypatch):
+    calls = _mock_binance(monkeypatch, return_value=7.89)
+
+    price = portfolio._fetch_crypto_price("USDC/BINANCE")
+
+    assert price == pytest.approx(7.89)
+    assert calls == ["USDCEUR"]
 
 
 def test_get_market_price_uses_euronext_search(monkeypatch):
