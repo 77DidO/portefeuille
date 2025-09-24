@@ -61,7 +61,7 @@ def run_snapshot(db: Session) -> Snapshot:
         synchronize_session=False
     )
 
-    for holding in holdings:
+    for holding in normalized_holdings:
         db.add(
             Holding(
                 snapshot_id=snapshot.id,

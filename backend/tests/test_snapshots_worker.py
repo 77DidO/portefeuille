@@ -39,79 +39,7 @@ def in_memory_db() -> Session:
     db = TestingSessionLocal()
 
     try:
-        as_of = datetime(2024, 1, 1, tzinfo=timezone.utc)
-        holdings = [
-            HoldingView(
-                identifier="PEA::PEA_POS",
-                asset="PEA_POS",
-                symbol_or_isin="PEA_POS",
-                symbol="PEA_POS",
-                isin=None,
-                mic=None,
-                quantity=1.0,
-                pru_eur=100.0,
-                invested_eur=100.0,
-                market_price_eur=120.0,
-                market_value_eur=120.0,
-                pl_eur=20.0,
-                pl_pct=20.0,
-                type_portefeuille="PEA",
-                as_of=as_of,
-            ),
-            HoldingView(
-                identifier="CTO::CTO_POS",
-                asset="CTO_POS",
-                symbol_or_isin="CTO_POS",
-                symbol="CTO_POS",
-                isin=None,
-                mic=None,
-                quantity=2.0,
-                pru_eur=50.0,
-                invested_eur=100.0,
-                market_price_eur=80.0,
-                market_value_eur=160.0,
-                pl_eur=60.0,
-                pl_pct=60.0,
-                type_portefeuille="CTO",
-                as_of=as_of,
-            ),
-            HoldingView(
-                identifier="CRYPTO::BTC",
-                asset="BTC",
-                symbol_or_isin="BTC",
-                symbol="BTC",
-                isin=None,
-                mic=None,
-                quantity=0.1,
-                pru_eur=2000.0,
-                invested_eur=200.0,
-                market_price_eur=3000.0,
-                market_value_eur=300.0,
-                pl_eur=100.0,
-                pl_pct=50.0,
-                type_portefeuille="CRYPTO",
-                as_of=as_of,
-            ),
-        ]
-
-        totals = {
-            "realized_pnl": 0.0,
-            "latent_pnl": sum(holding.pl_eur for holding in holdings),
-        }
-
-        dummy_compute = DummyComputeHoldings(holdings, totals)
-        monkeypatch.setattr(snapshots, "compute_holdings", dummy_compute)
-
-        snapshot = snapshots.run_snapshot(db)
-
-        assert snapshot.value_pea_eur == 120.0
-        assert snapshot.value_crypto_eur == 300.0
-        assert snapshot.value_total_eur == 120.0 + 160.0 + 300.0
-
-        persisted = db.query(Holding).all()
-        assert len(persisted) == len(holdings)
-        assert {holding.snapshot_id for holding in persisted} == {snapshot.id}
-
+        yield db
     finally:
         db.close()
         engine.dispose()
@@ -270,6 +198,10 @@ def test_run_snapshot_separates_pea_crypto_and_other(
     assert snapshot.value_crypto_eur == 300.0
     assert snapshot.value_total_eur == 120.0 + 160.0 + 300.0
 
+    persisted = in_memory_db.query(holdings_model.Holding).all()
+    assert len(persisted) == len(base_holdings)
+    assert {holding.snapshot_id for holding in persisted} == {snapshot.id}
+
     completed_log = capture_logs[-1]
     assert completed_log[3]["snapshot"]["value_pea_eur"] == 120.0
     assert completed_log[3]["snapshot"]["value_crypto_eur"] == 300.0
@@ -292,6 +224,7 @@ def test_run_snapshot_normalizes_portfolio_variants(
 
     holdings = in_memory_db.query(holdings_model.Holding).all()
     assert {holding.portfolio_type for holding in holdings} == {"PEA", "CRYPTO"}
+    assert {holding.snapshot_id for holding in holdings} == {snapshot.id}
 
     completed_log = capture_logs[-1]
     assert completed_log[3]["snapshot"]["value_pea_eur"] == snapshot.value_pea_eur
