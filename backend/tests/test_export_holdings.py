@@ -68,11 +68,12 @@ def test_export_holdings_uses_persisted_portfolio_type(monkeypatch):
         dummy_compute = DummyComputeHoldings([holding_view], totals)
         monkeypatch.setattr(snapshots, "compute_holdings", dummy_compute)
 
-        snapshots.run_snapshot(db)
+        snapshot = snapshots.run_snapshot(db)
 
         stored_holding = db.query(Holding).filter_by(asset="SOL").one()
         assert stored_holding.portfolio_type == "CRYPTO"
         assert stored_holding.symbol == "SOL"
+        assert stored_holding.snapshot_id == snapshot.id
 
         archive = export_zip(db)
         with zipfile.ZipFile(io.BytesIO(archive)) as zf:
@@ -84,6 +85,7 @@ def test_export_holdings_uses_persisted_portfolio_type(monkeypatch):
             row["asset"] == "SOL"
             and row["portfolio_type"] == "CRYPTO"
             and row["symbol"] == "SOL"
+            and row["snapshot_id"] == str(snapshot.id)
             for row in rows
         )
     finally:

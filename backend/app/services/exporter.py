@@ -35,6 +35,7 @@ CSV_FILES = {
         "notes",
     ],
     "holdings.csv": [
+        "snapshot_id",
         "as_of",
         "portfolio_type",
         "asset",
@@ -128,9 +129,15 @@ def _write_transactions(db: Session, zf: zipfile.ZipFile) -> None:
 
 
 def _write_holdings(db: Session, zf: zipfile.ZipFile) -> None:
-    rows = db.query(Holding).order_by(Holding.as_of.desc()).all()
+    rows = (
+        db.query(Holding)
+        .join(Holding.snapshot)
+        .order_by(Snapshot.ts.desc(), Holding.id)
+        .all()
+    )
     _write_csv(zf, "holdings.csv", CSV_FILES["holdings.csv"], [
         [
+            row.snapshot_id,
             row.as_of.isoformat(),
             row.portfolio_type,
             row.asset,

@@ -104,6 +104,10 @@ def test_run_snapshot_separates_pea_crypto_and_other(monkeypatch):
         assert snapshot.value_pea_eur == 120.0
         assert snapshot.value_crypto_eur == 300.0
         assert snapshot.value_total_eur == 120.0 + 160.0 + 300.0
+
+        persisted = db.query(holdings_model.Holding).all()
+        assert len(persisted) == len(holdings)
+        assert {holding.snapshot_id for holding in persisted} == {snapshot.id}
     finally:
         db.close()
         engine.dispose()
