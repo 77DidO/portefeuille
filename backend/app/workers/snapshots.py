@@ -10,15 +10,35 @@ from app.services.portfolio import compute_holdings, _normalize_portfolio_type
 from app.services.system_logs import record_log
 from app.utils.time import utc_now
 
+SNAPSHOT_PORTFOLIO_TYPE_ALIASES: dict[str, set[str]] = {
+    "PEA": {
+        "PEA-PME",
+        "PEA PME",
+        "PEAJEUNE",
+        "PEA JEUNE",
+        "PEA JEUNE LCL",
+    },
+    "CRYPTO": {
+        "CRYPTO BINANCE",
+        "CRYPTO_BINANCE",
+        "CRYPTO-BINANCE",
+        "CRYPTO COINBASE",
+        "CRYPTO KRAKEN",
+    },
+}
+
+_SNAPSHOT_PORTFOLIO_ALIAS_LOOKUP: dict[str, str] = {}
+for canonical, aliases in SNAPSHOT_PORTFOLIO_TYPE_ALIASES.items():
+    normalized_canonical = _normalize_portfolio_type(canonical)
+    _SNAPSHOT_PORTFOLIO_ALIAS_LOOKUP[normalized_canonical] = normalized_canonical
+    for alias in aliases:
+        normalized_alias = _normalize_portfolio_type(alias)
+        _SNAPSHOT_PORTFOLIO_ALIAS_LOOKUP[normalized_alias] = normalized_canonical
+
 
 def _normalize_snapshot_portfolio_type(value: str | None) -> str:
     normalized = _normalize_portfolio_type(value)
-
-    if normalized != "PEA" and normalized.startswith("PEA"):
-        return "PEA"
-    if normalized != "CRYPTO" and normalized.startswith("CRYPTO"):
-        return "CRYPTO"
-    return normalized
+    return _SNAPSHOT_PORTFOLIO_ALIAS_LOOKUP.get(normalized, normalized)
 
 
 def run_snapshot(db: Session) -> Snapshot:
@@ -56,10 +76,6 @@ def run_snapshot(db: Session) -> Snapshot:
     db.commit()
     db.refresh(snapshot)
 
-
-    db.query(Holding).filter(Holding.snapshot_id == snapshot.id).delete(
-        synchronize_session=False
-    )
 
     for holding in normalized_holdings:
         db.add(

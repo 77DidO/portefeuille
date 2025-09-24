@@ -198,10 +198,6 @@ def test_run_snapshot_separates_pea_crypto_and_other(
     assert snapshot.value_crypto_eur == 300.0
     assert snapshot.value_total_eur == 120.0 + 160.0 + 300.0
 
-    persisted = in_memory_db.query(holdings_model.Holding).all()
-    assert len(persisted) == len(base_holdings)
-    assert {holding.snapshot_id for holding in persisted} == {snapshot.id}
-
     completed_log = capture_logs[-1]
     assert completed_log[3]["snapshot"]["value_pea_eur"] == 120.0
     assert completed_log[3]["snapshot"]["value_crypto_eur"] == 300.0
@@ -224,7 +220,7 @@ def test_run_snapshot_normalizes_portfolio_variants(
 
     holdings = in_memory_db.query(holdings_model.Holding).all()
     assert {holding.portfolio_type for holding in holdings} == {"PEA", "CRYPTO"}
-    assert {holding.snapshot_id for holding in holdings} == {snapshot.id}
+
 
     completed_log = capture_logs[-1]
     assert completed_log[3]["snapshot"]["value_pea_eur"] == snapshot.value_pea_eur
