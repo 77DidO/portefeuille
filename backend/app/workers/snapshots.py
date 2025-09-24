@@ -11,24 +11,8 @@ from app.services.system_logs import record_log
 from app.utils.time import utc_now
 
 
-_SNAPSHOT_PORTFOLIO_TYPE_ALIASES = {
-    "PEA-PME": "PEA",
-    "PEA PME": "PEA",
-    "PEAPME": "PEA",
-    "PEAJEUNE": "PEA",
-    "PEA JEUNE": "PEA",
-    "PEA-JEUNE": "PEA",
-    "CRYPTO BINANCE": "CRYPTO",
-    "CRYPTO-BINANCE": "CRYPTO",
-}
-
-
 def _normalize_snapshot_portfolio_type(value: str | None) -> str:
     normalized = _normalize_portfolio_type(value)
-
-    alias = _SNAPSHOT_PORTFOLIO_TYPE_ALIASES.get(normalized)
-    if alias:
-        return alias
 
     if normalized != "PEA" and normalized.startswith("PEA"):
         return "PEA"
