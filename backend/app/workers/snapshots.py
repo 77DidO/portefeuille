@@ -1,32 +1,47 @@
 from __future__ import annotations
 
-from datetime import datetime
+from dataclasses import replace
 
 from sqlalchemy.orm import Session
 
 from app.models.holdings import Holding
 from app.models.snapshots import Snapshot
-from app.services.portfolio import compute_holdings
+from app.services.portfolio import compute_holdings, _normalize_portfolio_type
 from app.services.system_logs import record_log
 from app.utils.time import utc_now
+
+
+def _normalize_snapshot_portfolio_type(value: str | None) -> str:
+    normalized = _normalize_portfolio_type(value)
+
+    if normalized != "PEA" and normalized.startswith("PEA"):
+        return "PEA"
+    if normalized != "CRYPTO" and normalized.startswith("CRYPTO"):
+        return "CRYPTO"
+    return normalized
 
 
 def run_snapshot(db: Session) -> Snapshot:
     record_log(db, "INFO", "snapshots", "Snapshot recomputation started")
     compute_holdings.cache_clear()
     holdings, totals = compute_holdings(db)
+
+    normalized_holdings = []
+    value_pea = 0.0
+    value_crypto = 0.0
+    value_other = 0.0
+
+    for holding in holdings:
+        normalized_type = _normalize_snapshot_portfolio_type(holding.type_portefeuille)
+        normalized_holdings.append(replace(holding, type_portefeuille=normalized_type))
+        if normalized_type == "PEA":
+            value_pea += holding.market_value_eur
+        elif normalized_type == "CRYPTO":
+            value_crypto += holding.market_value_eur
+        else:
+            value_other += holding.market_value_eur
+
     ts = utc_now()
-    value_crypto = sum(
-        h.market_value_eur for h in holdings if h.type_portefeuille == "CRYPTO"
-    )
-    value_pea = sum(
-        h.market_value_eur for h in holdings if h.type_portefeuille == "PEA"
-    )
-    value_other = sum(
-        h.market_value_eur
-        for h in holdings
-        if h.type_portefeuille not in {"PEA", "CRYPTO"}
-    )
     value_total = value_pea + value_crypto + value_other
     pnl_total = totals["realized_pnl"] + totals["latent_pnl"]
 
@@ -41,7 +56,7 @@ def run_snapshot(db: Session) -> Snapshot:
     db.commit()
     db.refresh(snapshot)
 
-    for holding in holdings:
+    for holding in normalized_holdings:
         db.add(
             Holding(
                 asset=holding.asset,
