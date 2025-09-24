@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from app.models.base import Base
+from app.models.holdings import Holding
 from app.models import holdings as holdings_model  # noqa: F401  # ensure table registration
 from app.models import snapshots as snapshots_model  # noqa: F401
 from app.models import transactions as transactions_model  # noqa: F401
@@ -104,6 +105,10 @@ def test_run_snapshot_separates_pea_crypto_and_other(monkeypatch):
         assert snapshot.value_pea_eur == 120.0
         assert snapshot.value_crypto_eur == 300.0
         assert snapshot.value_total_eur == 120.0 + 160.0 + 300.0
+
+        persisted = db.query(Holding).all()
+        assert len(persisted) == len(holdings)
+        assert {holding.snapshot_id for holding in persisted} == {snapshot.id}
     finally:
         db.close()
         engine.dispose()

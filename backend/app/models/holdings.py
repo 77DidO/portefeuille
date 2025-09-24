@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Float, Integer, String
-from sqlalchemy.orm import synonym
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy.orm import relationship, synonym
 
 from .base import Base
 
@@ -13,6 +13,12 @@ class Holding(Base):
 
     id = Column(Integer, primary_key=True)
     account_id = Column(String(64), nullable=True)
+    snapshot_id = Column(
+        Integer,
+        ForeignKey("snapshots.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     asset = Column(String(64), nullable=False)
     symbol_or_isin = Column(String(64), nullable=True)
     symbol = Column(String(64), nullable=True)
@@ -28,3 +34,4 @@ class Holding(Base):
     as_of = Column(DateTime(timezone=True), nullable=False, index=True)
     portfolio_type = Column(String(16), nullable=False)
     type_portefeuille = synonym("portfolio_type")
+    snapshot = relationship("Snapshot", back_populates="holdings")

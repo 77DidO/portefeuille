@@ -41,9 +41,14 @@ def run_snapshot(db: Session) -> Snapshot:
     db.commit()
     db.refresh(snapshot)
 
+    db.query(Holding).filter(Holding.snapshot_id == snapshot.id).delete(
+        synchronize_session=False
+    )
+
     for holding in holdings:
         db.add(
             Holding(
+                snapshot_id=snapshot.id,
                 asset=holding.asset,
                 symbol_or_isin=holding.symbol_or_isin,
                 symbol=holding.symbol,
