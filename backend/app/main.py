@@ -10,7 +10,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from app.api import configuration, export, health, journal, portfolio, snapshots, transactions
+from app.api import (
+    configuration,
+    export,
+    gabarits,
+    health,
+    journal,
+    portfolio,
+    snapshots,
+    transactions,
+)
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.db import base  # noqa: F401
@@ -108,3 +117,4 @@ app.include_router(snapshots.router)
 app.include_router(journal.router)
 app.include_router(configuration.router)
 app.include_router(export.router)
+app.include_router(gabarits.router)
