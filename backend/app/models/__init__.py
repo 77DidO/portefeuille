@@ -8,3 +8,4 @@ from .settings import Setting  # noqa: F401
 from .fx_rates import FxRate  # noqa: F401
 from .system_logs import SystemLog  # noqa: F401
 from .account_settings import AccountSetting  # noqa: F401
+from .gabarits import Gabarit  # noqa: F401
