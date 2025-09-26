@@ -8,7 +8,6 @@ const NAV_ITEMS = [
   { href: "/", label: "Tableau de bord" },
   { href: "/transactions", label: "Transactions" },
   { href: "/journal", label: "Journal" },
-  { href: "/gabarits", label: "Gabarits" },
   { href: "/snapshots", label: "Snapshots" },
   { href: "/export", label: "Export" }
 ];
