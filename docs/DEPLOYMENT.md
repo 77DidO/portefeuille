@@ -1,14 +1,14 @@
 # Déploiement sans Docker (systemd + Nginx)
 
-Ce guide décrit une installation de l'application sur un serveur Linux en utilisant `systemd` pour superviser le backend FastAPI et le frontend Next.js, ainsi que Nginx comme reverse-proxy.
+Ce guide décrit une installation de l'application sur un serveur Linux en utilisant `systemd` pour superviser le backend FastAPI et le frontend Next.js, ainsi que Nginx comme reverse-proxy HTTPS.
 
 ## Prérequis serveur
 
-- Distribution Linux avec `systemd` et `nginx`
-- Python 3.11+
-- Node.js 18+
-- `git`, `pip`, `npm`
+- Distribution Linux récente avec `systemd`
 - Accès sudo
+- `git`, `pip`, `python3.11`, `nodejs` 18+, `npm`
+- Nginx (paquet `nginx` ou `nginx-full`)
+- Certbot (facultatif mais recommandé pour le HTTPS)
 
 ## Arborescence recommandée
 
@@ -16,6 +16,7 @@ Ce guide décrit une installation de l'application sur un serveur Linux en utili
 /opt/portefeuille/
 ├── backend/
 ├── frontend/
+├── scripts/
 ├── .venv/
 └── .env
 ```
@@ -28,7 +29,7 @@ Ce guide décrit une installation de l'application sur un serveur Linux en utili
    sudo useradd --system --create-home --shell /usr/sbin/nologin portefeuille
    ```
 
-2. Cloner le dépôt :
+2. Cloner le dépôt et attribuer les droits :
 
    ```bash
    sudo mkdir -p /opt/portefeuille
@@ -36,7 +37,7 @@ Ce guide décrit une installation de l'application sur un serveur Linux en utili
    sudo -u portefeuille git clone https://example.com/portefeuille.git /opt/portefeuille
    ```
 
-3. Créer l'environnement virtuel Python et installer les dépendances :
+3. Créer l'environnement virtuel Python et installer les dépendances backend :
 
    ```bash
    sudo -u portefeuille python3.11 -m venv /opt/portefeuille/.venv
@@ -105,7 +106,7 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-> **Remarque :** `npm run start` démarre le serveur Next.js à partir du build généré par `npm run build`. Assurez-vous de relancer `npm run build` après chaque mise à jour.
+> **Remarque :** `npm run start` démarre le serveur Next.js à partir du build généré par `npm run build`. Relancez `npm run build` après chaque mise à jour du code frontend.
 
 Activer et démarrer les services :
 
@@ -150,7 +151,27 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-Pour activer HTTPS, utilisez `certbot` ou tout autre outil compatible et adaptez la configuration pour écouter sur `443`.
+### HTTPS
+
+1. Installer Certbot (paquet `certbot` + plugin Nginx).
+2. Lancer l'émission du certificat :
+
+   ```bash
+   sudo certbot --nginx -d votre-domaine
+   ```
+
+3. Vérifier que la redirection automatique HTTP → HTTPS est bien activée.
+
+### Websocket & en-têtes supplémentaires
+
+Si vous exposez l'API sur `/api/`, veillez à proxyfier l'en-tête `Upgrade` pour les websockets (utile si vous activez des flux temps réel) :
+
+```nginx
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection "upgrade";
+```
+
+Ajoutez également `proxy_set_header X-Forwarded-Host $host;` si vous utilisez un CDN.
 
 ## Mises à jour
 
@@ -176,7 +197,13 @@ Pour activer HTTPS, utilisez `certbot` ou tout autre outil compatible et adaptez
    sudo -u portefeuille NEXT_PUBLIC_API_BASE="https://votre-domaine" npm run build
    ```
 
-4. Redémarrer les services :
+4. Appliquer les migrations :
+
+   ```bash
+   sudo -u portefeuille /opt/portefeuille/.venv/bin/alembic -c /opt/portefeuille/alembic.ini upgrade head
+   ```
+
+5. Redémarrer les services :
 
    ```bash
    sudo systemctl start portefeuille-backend.service portefeuille-frontend.service
@@ -191,4 +218,10 @@ sudo journalctl -u portefeuille-backend.service -f
 sudo journalctl -u portefeuille-frontend.service -f
 ```
 
-Nginx journalise dans `/var/log/nginx/access.log` et `/var/log/nginx/error.log`.
+Les logs Nginx se trouvent dans `/var/log/nginx/access.log` et `/var/log/nginx/error.log`. Pensez à configurer `logrotate` pour éviter le remplissage disque.
+
+## Sauvegardes & supervision
+
+- **Sauvegardes** : sauvegardez régulièrement la base SQLite (`database.db` par défaut) ou votre base Postgres/MySQL si vous en utilisez une.
+- **Supervision** : exposez un check de santé sur `https://votre-domaine/api/health` pour vos sondes.
+- **Métriques** : les journaux backend incluent la durée des requêtes FastAPI. Intégrez-les dans un outil comme Loki/Grafana pour un suivi avancé.

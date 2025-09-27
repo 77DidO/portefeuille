@@ -1,70 +1,92 @@
 # Portefeuille PEA + Crypto
 
-Application mono-utilisateur pour suivre un portefeuille PEA et crypto (Binance) reposant sur :
+Application mono-utilisateur permettant de suivre un portefeuille PEA et un portefeuille crypto via Binance. Elle s'articule autour d'une API FastAPI et d'une interface Next.js moderne capable de calculer automatiquement les positions et le P&L.
+
+## Sommaire
+
+1. [Vue d'ensemble](#vue-densemble)
+2. [Fonctionnalités](#fonctionnalités)
+3. [Architecture & arborescence](#architecture--arborescence)
+4. [Mise en route](#mise-en-route)
+5. [Configuration](#configuration)
+6. [Import / Export de données](#import--export-de-données)
+7. [API & tâches planifiées](#api--tâches-planifiées)
+8. [Tests & qualité](#tests--qualité)
+9. [Déploiement](#déploiement)
+10. [Ressources complémentaires](#ressources-complémentaires)
+
+## Vue d'ensemble
 
 - **Backend** : FastAPI + SQLAlchemy + APScheduler (base SQLite par défaut)
 - **Frontend** : Next.js 14 + Tailwind CSS
+- **Base de données** : SQLite pour le développement, compatible avec PostgreSQL/MySQL via SQLAlchemy
+- **Import/Export** : format CSV/ZIP documenté, CSV d'exemple fournis
 
-## Fonctionnalités principales
+L'application est pensée pour un déploiement mono-utilisateur : aucune gestion multi-compte n'est nécessaire, ce qui simplifie la configuration et la maintenance.
 
-- Calcul FIFO des positions et du P&L agrégé
-- Imports CSV/ZIP, export complet des données et seed de démonstration optionnel
-- Journal de trades et snapshots quotidiens (planification automatique et exécution manuelle)
-- Configuration chiffrée de l'API Binance et alias de devises
+## Fonctionnalités
 
-## Architecture et arborescence
+- **Suivi des positions** : calcul FIFO des positions, du P&L latent et réalisé, et des dividendes associés
+- **Journal de trades** : suivi détaillé des entrées/sorties avec R multiples, statuts et notes personnalisées
+- **Planification automatique** : snapshot quotidien planifié via APScheduler et déclenchable à la demande
+- **Connecteurs d'import** : prise en charge des CSV personnalisés et des exports Binance (via `samples/`)
+- **Sécurité** : stockage chiffré des identifiants API Binance grâce à une clé applicative
+- **Expérience développeur** : scripts de démarrage rapide, migrations Alembic versionnées et formatage/linting automatique
+
+## Architecture & arborescence
 
 ```text
-backend/    → API FastAPI, tâches planifiées et services de calcul
-frontend/   → UI Next.js/Tailwind
-docs/       → Documentation (déploiement, format d'export)
-samples/    → Exemples d'imports/export
+backend/    → API FastAPI, tâches planifiées, services métier et scripts d'import
+frontend/   → UI Next.js/Tailwind, composants React et pages App Router
+docs/       → Documentation utilisateur et guides d'exploitation
+samples/    → Exemples d'imports/export pour tests manuels et automatisés
 sql/        → Scripts SQL et migrations Alembic
+scripts/    → Utilitaires (seed de démo, tâches d'administration)
 ```
 
-## Prérequis
+Les deux services communiquent via HTTP. Le frontend détecte automatiquement l'URL du backend lorsqu'ils sont servis sur la même machine (incluant les tunnels `https://…-3000…`).
+
+## Mise en route
+
+### Prérequis
 
 - Python **3.11+** avec `venv` et `pip`
 - Node.js **18+** et `npm`
-- SQLite (installé par défaut sur la plupart des distributions)
+- SQLite (installé par défaut sur la majorité des distributions)
 
-## Installation locale
-
-### Script automatisé (Linux / macOS / WSL)
-
-Un script Bash est fourni pour installer les dépendances et lancer les deux services :
+### Installation automatisée (Linux / macOS / WSL)
 
 ```bash
 ./init_local.sh
 ```
 
-Le script crée un environnement virtuel Python local (`.venv`), installe les dépendances backend, exécute `npm install` dans `frontend/` puis lance :
+Le script :
 
-- Backend : `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
-- Frontend : `npm run dev` (sans variable `NEXT_PUBLIC_API_BASE`, l'auto-détection pointe sur `http://localhost:8000` en local et remplace automatiquement le suffixe `-3000` par `-8000` sur les URL de tunnel/port forwarding pour cibler le backend FastAPI)
+1. crée `.venv` puis installe les dépendances backend ;
+2. exécute `npm install` dans `frontend/` ;
+3. démarre simultanément `uvicorn app.main:app` et `npm run dev` ;
+4. ajuste automatiquement l'URL API côté frontend (détection locale ou tunnels).
 
-Appuyez sur `Ctrl+C` pour arrêter les deux services.
+Arrêter les services avec `Ctrl+C` ferme proprement les deux processus.
 
-### Script automatisé (Windows PowerShell)
-
-Depuis un terminal PowerShell :
+### Installation automatisée (Windows PowerShell)
 
 ```powershell
 Set-ExecutionPolicy -Scope Process RemoteSigned
 ./init_local.ps1
 ```
 
-Le script réplique les étapes Linux : création de l'environnement virtuel, installation des dépendances puis lancement des serveurs backend et frontend. Sans variable `NEXT_PUBLIC_API_BASE`, l'UI détecte automatiquement `http://localhost:8000` en local et remappe `-3000` → `-8000` pour les URL de tunnels afin de viser l'API.
+Les étapes sont identiques au script Bash et prennent en charge la détection automatique du backend.
 
 ### Installation manuelle
 
-1. Copier la configuration d'exemple si besoin :
+1. Copier la configuration d'exemple :
 
    ```bash
    cp .env.example .env
    ```
 
-2. Préparer et activer l'environnement Python :
+2. Créer l'environnement Python :
 
    ```bash
    python -m venv .venv
@@ -72,7 +94,7 @@ Le script réplique les étapes Linux : création de l'environnement virtuel, in
    pip install -r backend/requirements.txt
    ```
 
-3. Lancer le backend FastAPI depuis le dossier `backend/` :
+3. Démarrer le backend FastAPI :
 
    ```bash
    uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -86,93 +108,114 @@ Le script réplique les étapes Linux : création de l'environnement virtuel, in
    npm run dev
    ```
 
-Le backend est accessible sur http://localhost:8000 et le frontend sur http://localhost:3000. L'UI détecte automatiquement cette URL backend lorsqu'elle est servie depuis `localhost` et, pour les sessions distantes (`https://…-3000…`), remplace le suffixe `-3000` par `-8000` afin de contacter le backend exposé via le même tunnel.
+Le frontend écoute par défaut sur http://localhost:3000 et contacte automatiquement le backend sur http://localhost:8000.
+
+### Docker Compose
+
+Un fichier `docker-compose.yml` est fourni pour exécuter les deux services dans des conteneurs distincts.
+
+```bash
+docker compose up --build
+```
+
+Par défaut, le frontend détecte l'API exposée sur `http://backend:8000`. Décommentez `NEXT_PUBLIC_API_BASE` dans `docker-compose.yml` si vous souhaitez forcer un autre endpoint (ex. reverse proxy externe).
 
 ### Migrations Alembic
-
-Les migrations sont configurées pour être lancées depuis la racine du dépôt :
 
 ```bash
 alembic upgrade head
 ```
 
-Depuis le dossier `backend/`, utilisez l'option `-c` pour pointer vers le fichier de configuration racine :
+Depuis `backend/` :
 
 ```bash
 cd backend
 alembic -c ../alembic.ini upgrade head
 ```
 
-Exportez `NEXT_PUBLIC_API_BASE` uniquement si le backend est servi depuis un autre hôte/port que celui du frontend (ex. backend public distinct, reverse proxy avec chemin spécifique). Dans ce cas, la valeur définie reste prioritaire sur l'auto-détection.
+Les migrations sont appliquées automatiquement au démarrage grâce au module `app.db.init`, mais l'exécution manuelle reste utile pour les environnements CI/CD.
 
-Avec Docker Compose, la variable `NEXT_PUBLIC_API_BASE` n'est plus définie par défaut : l'auto-détection cible le backend local. Décommentez et ajustez la variable dans `docker-compose.yml` uniquement si le frontend doit pointer vers une URL différente (tunnel, domaine public, etc.).
+## Configuration
 
-## Configuration applicative
-
-Les variables d'environnement les plus utiles (toutes disponibles dans `.env.example`) :
+Les variables essentielles (voir `.env.example`) :
 
 | Clé | Description |
 | --- | --- |
-| `DATABASE_URL` | URL SQLAlchemy (SQLite par défaut). Les chemins relatifs sont automatiquement transformés en chemins absolus. |
-| `TZ` | Fuseau horaire utilisé pour l'application et le scheduler. |
-| `APP_SECRET` | Clé utilisée pour chiffrer des secrets comme l'API Binance. |
-| `BINANCE_API_KEY` / `BINANCE_API_SECRET` | Identifiants API Binance en lecture seule. |
-| `DEMO_SEED` | Active le seed de démonstration qui insère un exemple de transaction lors du premier démarrage. |
+| `DATABASE_URL` | URL SQLAlchemy. Les chemins relatifs sont convertis en absolu (utile pour SQLite). |
+| `TZ` | Fuseau horaire utilisé pour la planification APScheduler et les dates affichées. |
+| `APP_SECRET` | Clé AES utilisée pour chiffrer les secrets (API Binance). |
+| `BINANCE_API_KEY` / `BINANCE_API_SECRET` | Accès API Binance en lecture seule. |
+| `DEMO_SEED` | `true` pour insérer un jeu de données de démonstration au premier démarrage. |
+| `SNAPSHOT_HOUR` / `SNAPSHOT_MINUTE` | Heure du snapshot quotidien automatique. |
 
-Une fois l'application lancée, l'UI permet également de sauvegarder les paramètres via l'API `/config` (clé Binance, alias de devises, etc.).
+L'interface permet de gérer dynamiquement les alias de devises, le seed Binance et la purge complète via les endpoints `/config`.
 
 ## Import / Export de données
 
-- **Import** : `POST /transactions/import` accepte un fichier CSV ou ZIP (voir `samples/`). Le fichier doit au minimum contenir `transactions.csv` avec les colonnes décrites dans [docs/README_EXPORT.md](docs/README_EXPORT.md). Les identifiants (`transaction_uid`) sont utilisés pour dédupliquer les lignes.
-- **Export** : `GET /export/zip` retourne une archive ZIP contenant `transactions.csv`, `holdings.csv`, `snapshots.csv` et `journal_trades.csv`. Le détail des colonnes est documenté dans [docs/README_EXPORT.md](docs/README_EXPORT.md).
+- **Import CSV/ZIP** via `POST /transactions/import`. L'API déduplique les lignes grâce à `transaction_uid` et retourne un rapport détaillant les lignes créées, mises à jour ou ignorées.
+- **Export complet** via `GET /export/zip`. Le ZIP contient `transactions.csv`, `holdings.csv`, `snapshots.csv` et `journal_trades.csv` dont la structure est décrite dans [docs/README_EXPORT.md](docs/README_EXPORT.md).
+- **Exemples** : le dossier [`samples/`](samples/) fournit des fichiers prêts à l'emploi pour l'import manuel ou les tests d'intégration.
 
-Après chaque import ou modification de transaction, les positions sont recalculées et mises en cache. Le cache est également invalidé lorsqu'on déclenche un snapshot manuel via `POST /snapshots/run`.
+Chaque import déclenche une invalidation du cache de positions suivie d'un recalcul immédiat.
 
-## Aperçu de l'API
+## API & tâches planifiées
+
+### Endpoints principaux
 
 | Endpoint | Description |
 | --- | --- |
-| `GET /` | Vérifie que l'application répond et renvoie le nom de l'app. |
-| `GET /health` | Endpoint de santé minimal. |
-| `GET /transactions` | Liste paginée (500 max) filtrable par source, type de portefeuille, actif ou opération. |
+| `GET /` | Vérifie l'état de l'application. |
+| `GET /health` | Check de santé minimal pour vos probes. |
+| `GET /transactions` | Liste paginée (500 max) filtrable par source, portefeuille, actif, type d'opération. |
 | `PATCH /transactions/{id}` / `DELETE /transactions/{id}` | Mise à jour ou suppression d'une transaction. |
-| `GET /portfolio/holdings` | Retourne les positions agrégées et un résumé global. |
-| `GET /portfolio/holdings/{identifier}` | Détail d'une position (historique FIFO, P&L réalisé, dividendes). |
-| `GET /portfolio/pnl` | Historique du P&L global basé sur les snapshots. |
-| `GET /snapshots` | Liste les snapshots, avec filtres temporels facultatifs. |
-| `POST /snapshots/run` | Exécute immédiatement le calcul d'un snapshot. |
-| `GET /journal` / `POST /journal` | Lecture et création de trades dans le journal. |
+| `GET /portfolio/holdings` | Positions agrégées, P&L, PRU et exposition par devise. |
+| `GET /portfolio/holdings/{identifier}` | Historique FIFO détaillé d'une position. |
+| `GET /portfolio/pnl` | Historique des snapshots agrégés. |
+| `GET /snapshots` / `POST /snapshots/run` | Gestion des snapshots planifiés et manuels. |
+| `GET /journal` / `POST /journal` | Lecture/écriture dans le journal de trades. |
 | `PATCH /journal/{id}` | Mise à jour d'un trade existant. |
-| `GET /config/settings` / `POST /config/settings` | Lecture/écriture des paramètres applicatifs (alias de devises, préférences). |
-| `POST /config/api/binance` | Sauvegarde chiffrée de la clé et du secret Binance. |
-| `POST /config/wipe` | Purge complète des données (transactions, holdings, snapshots, journal…). |
+| `GET /config/settings` / `POST /config/settings` | Lecture et écriture des paramètres (alias, préférences d'affichage). |
+| `POST /config/api/binance` | Sauvegarde chiffrée de la clé/secret Binance. |
+| `POST /config/wipe` | Purge complète (transactions, holdings, snapshots, journal). |
 
-Les endpoints retournent des schémas Pydantic décrits dans `backend/app/schemas/*`.
+Les schémas Pydantic correspondants se trouvent dans `backend/app/schemas/`.
 
-## Planification et tâches en arrière-plan
+### Planification & tâches d'arrière-plan
 
-Au démarrage, l'application :
+Au démarrage :
 
-- applique les migrations Alembic et exécute un seed de démo si activé ;
-- planifie le job `daily_snapshot` avec APScheduler en fonction des variables `SNAPSHOT_HOUR`/`SNAPSHOT_MINUTE` (par défaut 18:00) ;
-- expose la tâche `run_snapshot` permettant de lancer manuellement un snapshot.
+1. les migrations Alembic sont appliquées ;
+2. un seed de démonstration est exécuté si `DEMO_SEED=true` ;
+3. le job `daily_snapshot` est programmé via APScheduler selon `SNAPSHOT_HOUR`/`SNAPSHOT_MINUTE` ;
+4. le service expose un endpoint pour déclencher manuellement les snapshots (`POST /snapshots/run`).
 
-## Tests
+Un job de recalcul est également déclenché après chaque import/export pour maintenir les agrégats à jour.
 
-- Backend :
+## Tests & qualité
 
-  ```bash
-  cd backend
-  pytest
-  ```
+### Tests backend
 
-- Frontend :
+```bash
+cd backend
+pytest
+```
 
-  ```bash
-  cd frontend
-  npm run lint
-  ```
+### Qualité frontend
+
+```bash
+cd frontend
+npm run lint
+```
+
+Des scripts additionnels (`npm run test`, `npm run typecheck`) peuvent être ajoutés selon vos besoins.
 
 ## Déploiement
 
-Pour une installation serveur sans Docker, un guide systemd + Nginx est disponible dans [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Pour un déploiement serveur sans Docker, consultez le guide [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) (systemd + Nginx, HTTPS, journalisation, mises à jour).
+
+## Ressources complémentaires
+
+- [docs/README_EXPORT.md](docs/README_EXPORT.md) : structure des CSV d'import/export
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) : guide d'installation serveur
+- [samples/](samples/) : jeux de données d'exemple
+- [scripts/](scripts/) : utilitaires (seed de démo, tâches ponctuelles)
