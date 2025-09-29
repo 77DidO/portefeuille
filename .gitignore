@@ -9,3 +9,6 @@ portfolio.db
 .pytest_cache/
 
 frontend/.tests-dist/
+frontend/package-lock.json
+backend/logs/app.log
+frontend/package-lock.json

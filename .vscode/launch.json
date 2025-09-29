@@ -1,0 +1,49 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Backend: FastAPI (launch)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--reload", "--host", "127.0.0.1", "--port", "8000"],
+      "cwd": "${workspaceFolder}/backend",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Frontend: Next.js (terminal)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev",
+      "cwd": "${workspaceFolder}/frontend"
+    },
+    {
+      "name": "Brave: localhost:3000",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:3000",
+      "webRoot": "${workspaceFolder}/frontend",
+      "runtimeExecutable": "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "App (backend + frontend)",
+      "configurations": [
+        "Backend: FastAPI (launch)",
+        "Frontend: Next.js (terminal)"
+      ],
+      "stopAll": true
+    },
+    {
+      "name": "App + Brave",
+      "configurations": [
+        "Backend: FastAPI (launch)",
+        "Frontend: Next.js (terminal)",
+        "Brave: localhost:3000"
+      ],
+      "stopAll": true
+    }
+  ]
+}

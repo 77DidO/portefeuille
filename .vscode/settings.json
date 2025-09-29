@@ -1,0 +1,26 @@
+{
+  "python.defaultInterpreterPath": "C:\\Python313\\python.exe",      // optionnel
+  "python.terminal.activateEnvironment": true,                        // optionnel
+
+  "terminal.integrated.defaultProfile.windows": "PowerShell",
+
+  "security.workspace.trust.enabled": true,
+  "security.workspace.trust.untrustedFiles": "open",
+
+  "codex.trustedWorkspace": true,
+  "codex.tools.requireApproval": false,
+  "codex.files.requireApproval": false,
+  "codex.applyEdits.requireApproval": false,
+  "codex.tools.autoApprove": [
+    "bash","shell","powershell","cmd",
+    "node","npm","pnpm","yarn",
+    "python","pip","pipenv","uv",        // auto-approve Python aussi
+    "docker","docker-compose","git","curl"
+  ],
+
+  "github.copilot.chat.requireCommandApproval": false,
+  "github.copilot.chat.requireEditApproval": false,
+
+  "chatgpt.cliExecutable": "",
+  "chatgpt.commentCodeLensEnabled": false
+}
